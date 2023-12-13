@@ -4,6 +4,7 @@ Short Summary:
 reads JK_BMS via UART and transmits the data via CAN-BUS emulating Pylontech protocol
 Inverter sees Volt, Current, SOC and Temp.
 Script  has trivial control-loop to control actual current for charging and discharging. e.g. if the highest cell goes beyond 3.5V max-charge current gets lowered, resulting that the inverter loweres the charging power.
+Same holds true for the weakest cell. Depending on weakest cell voltage, allowed current-draw gets limited and finally adjusted to zero t protect the lowest cell against over-discharge.
 
 
 Dear all,
