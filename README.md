@@ -38,6 +38,42 @@ I will add more info over time.
 But its a good idea to clone https://github.com/juamiso/PYLON_EMU to get hold of the required pylon_CAN_210124.dbc file.
 After having all python libs installed, just execute the script delivered via this repo
 
+## making the script autostart as a service
+If the script stops, that the inverter does not have a valid can-bus coomunication and hence all charging/discharging is stopped by the inverter. Making the script a service, even reloads the scripts in case e.g. it was killed.. 
+
+some good reading: https://medium.com/@benmorel/creating-a-linux-service-with-systemd-611b5c8b91d6
+
+### systemd script
+```bash
+behn@rpi2:~ $ cat /etc/systemd/system/alien_master.service
+[Unit]
+Description=Launching alien_master JK_pylon converter
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+User=xxx                                                     # change name according to your account used on your own RPI
+ExecStart=/home/behn/PYLON_EMU-master/alien_master1.py       # change path accordingly to match your setup
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### autostarting and enabling the systemd script
+Once added the script execute:
+```bash
+$ systemctl start alien_master
+```
+
+And automatically get it to start on boot:
+```bash
+$ systemctl enable alien_master
+```
+
+
 
 cabling
 ========
