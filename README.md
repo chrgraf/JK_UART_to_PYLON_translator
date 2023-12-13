@@ -73,7 +73,10 @@ And automatically get it to start on boot:
 $ systemctl enable alien_master
 ```
 
-
+stopping the script
+```bash
+$ systemctl stop alien_master
+```
 
 cabling
 ========
