@@ -18,19 +18,67 @@ https://github.com/PurpleAlien/jk-bms_grafana
 
 Tested
 =======
-RPI2 with wavshare can-hat and usb-serial converter
+RPI2          : with wavshare can-hat and usb-serial converter
+JK BMS        : JK Smart Active Balance BMS BD6A20S10P
+Solis inverter: RAI-3K-48ES-5G
+
 
 
 Install
 ========
-I will add much mire info over time.
+I will add more info over time.
 But its a good idea to clone https://github.com/juamiso/PYLON_EMU to get hold of the required pylon_CAN_210124.dbc file.
-After having all python libs installed, just execute the script delivered vua this repo
+After having all python libs installed, just execute the script delivered via this repo
 
 
 cabling
 ========
-todo
+Please find the connection towards JK-BMS via UART <> RPI2 via USB serial device. Make sure the USB-serial converter allows to Jumper for 3.3V!
+<img width="1002" alt="image" src="https://github.com/chrgraf/JK_UART_to_PYLON_translator/assets/22005482/335aa90b-a8b1-40e6-a976-aeb044a0daa1">
+
+
+
+Features
+=========
+Reads Batt_voltage, current, SOC, temperature from the JK_BMS and sends it to the Inverter with Pylon Protocol.
+The original script was translating the derived Current incorrectly. This is now corrected and now correct current gets reported.
+A very much simple charge-control loop got added. e.g. if either  the cell with highest voltage or the cell with lowest voltage is crossing a treshhold, the script controls the inverter to modify charge or drawn current:
+
+Battery_charge_current_limit_default
+
+  # min_volt set the limit
+  if (min_volt>=3.3):
+     Battery_discharge_current_limit = 60
+  elif (min_volt>=3.1):
+     Battery_discharge_current_limit = 50
+  elif (min_volt>=3.0):
+     Battery_discharge_current_limit = 30
+  elif (min_volt>=2.9):
+     Battery_discharge_current_limit = 10
+  elif (min_volt<2.9):
+     Battery_discharge_current_limit = 0
+  else:
+     Battery_discharge_current_limit = Battery_discharge_current_limit_default
+ 
+
+  if (not oscillation):
+    # max_volt the limit
+    if (max_volt>=3.55):
+       Battery_charge_current_limit = 0
+    elif (max_volt>=3.50):
+       Battery_charge_current_limit = 2
+    elif (max_volt>=3.47):
+       Battery_charge_current_limit = 15
+    elif (max_volt>=3.45):
+       Battery_charge_current_limit = 30
+    elif (max_volt>=3.0):
+       Battery_charge_current_limit = 60
+    elif (max_volt>=2.7):
+       Battery_charge_current_limit = 30
+
+Another item I am looking into is related to mine solis-inverter. Sometimes its control-loop fails to adjust reasonable amount to charge battery, resulting in either charging thsat high that in addition to excesssolar-power, power from grid id taken.
+This oscialltion-counteract routine is in a very early stage though..
+
 
 thanks
 
