@@ -1,14 +1,21 @@
 # JK_UART_to_PYLON_translator
-reads JK BMS info via UART and transmits the data via CAN-BUS emulating Pylontech protocol
+
+Short Summary:
+reads JK_BMS via UART and transmits the data via CAN-BUS emulating Pylontech protocol
+Inverter sees Volt, Current, SOC and Temp.
+Script  has trivial control-loop to control actual current for charging and discharging. e.g. if the highest cell goes beyond 3.5V max-charge current gets lowered, resulting that the inverter loweres the charging power.
 
 
 Dear all,
 
 project is in an very early stage.
 Overall purpose is self-built solar-batterie, using JK-BMS. Older JK-BMS do not support can-bus. This project is aimed to close the gap, by reading battery-stats via UART from JK-BMS and then translating to CAN-BUS using Pylontech Protocol.
+General speaking this script is massively using below repos from PurpleAlien and Juamiso, combines them into a single script and adds some more control-loop capabilities.
 
+# Disclaimer
 Initial tests shows it working. Use at own risk. The author is not taking any responsibility for any damage or issue resulting by making use of this project.
 
+# credits
 Full credits go to:
 1) Juamiso, who developed the CAN-BUS Part
 https://github.com/juamiso/PYLON_EMU
