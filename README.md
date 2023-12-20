@@ -133,17 +133,17 @@ WantedBy=multi-user.target
 ### autostarting and enabling the systemd script
 Once added the script execute:
 ```bash
-$ systemctl start alien_master
+$ systemctl start jk_pylon
 ```
 
 And automatically get it to start on boot:
 ```bash
-$ systemctl enable alien_master
+$ systemctl enable jk_pylon 
 ```
 
 stopping the script
 ```bash
-$ systemctl stop alien_master
+$ systemctl stop jk_pylon 
 ```
 
 cabling
