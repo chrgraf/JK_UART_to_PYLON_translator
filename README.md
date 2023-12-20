@@ -26,9 +26,11 @@ https://github.com/PurpleAlien/jk-bms_grafana
 
 Tested
 =======
+```
 RPI2          : with wavshare can-hat and usb-serial converter
 JK BMS        : JK Smart Active Balance BMS BD6A20S10P
 Solis inverter: RAI-3K-48ES-5G
+```
 
 
 
