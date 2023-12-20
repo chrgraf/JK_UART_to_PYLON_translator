@@ -1,3 +1,9 @@
+# copy this file into /etc/systemd/system
+# replace all occurences of /home/behn/jk_pylon with your venv dir
+# make the service starting after eboot: systemctl enable jk_pylon
+# show status: systemctl show jk_pylon
+# stop it: systemctl stop jk_pylon
+
 [Unit]
 Description=Launching JK_pylon converter
 After=network.target
