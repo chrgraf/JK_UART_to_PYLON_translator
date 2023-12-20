@@ -24,12 +24,11 @@ https://github.com/juamiso/PYLON_EMU
 2) PurpleAlien, who developed the JK-UART script
 https://github.com/PurpleAlien/jk-bms_grafana
 
-# Tested
-```
+Tested
+=======
 RPI2          : with wavshare can-hat and usb-serial converter
 JK BMS        : JK Smart Active Balance BMS BD6A20S10P
 Solis inverter: RAI-3K-48ES-5G
-```
 
 
 
@@ -53,38 +52,42 @@ sudo apt install python3-venv -y
 as a next create the venv
 This creates a directory jk_pylon
 ```bash
-python3 -m venv jk_pylon
+python -m venv jk_pylon_venv
 ```
+
+This article says itsa bad idea to put your project-files into same directory which holds your venv. So lets keep the venv-directory jk_pylon_venv and the project-dir jk_pylon seperated.
 
 now copy all required files into this directory
 ```bash
 cp alien_master1.py pylon_CAN_210124.dbc requirements.txt ./jk_pylon/
+```
 
-# activating the venv - prompt shall look like this after executing the activate : (jk_pylon)..:~/jk_pylon $
-cd ./jk_pylon/
-source ./bin/activate
+# activating the venv
+prompt shall look like this after executing the activate : (jk_pylon)..:~/jk_pylon $
+```bash
+$ source jk_pylon_venv/bin/activate
+```
 
 # install all dependencis
-pip3 install -r requirements.txt
+```bash
+(jk_pylon_venv) behn@rpi2:~ $ pwd
+/home/behn
+(jk_pylon_venv) behn@rpi2:~ $ pip3 install -r ./jk_pylon/requirements.txt
+```
 
 # finally run the script
-./jk_pylon_can.py
+above source "source jk_pylon_venv/bin/activate" should have chnaged your prompt, indicating (jk_pylon_venv)
 
-(jk_pylon) behn@rpi2:~/jk_pylon $ ./jk_pylon_can.py
+```bash
+# change into the projct directory, required to find the pylon_CAN_210124.dbc file
+(jk_pylon_venv) behn@rpi2:~ $ cd jk_pylon
+# launch the script
+(jk_pylon_venv) behn@rpi2:~/jk_pylon $ ./jk_pylon_can.py
 Carrying out cyclic tests with socketcan interface
 Starting to send a message every 1s
 cellcount= 16
 []
-JK_BMS{mode="cell1_BMS"} 3.293
-JK_BMS{mode="cell2_BMS"} 3.295
-JK_BMS{mode="cell3_BMS"} 3.294
-JK_BMS{mode="cell4_BMS"} 3.294
-JK_BMS{mode="cell5_BMS"} 3.294
-JK_BMS{mode="cell6_BMS"} 3.294
-JK_BMS{mode="cell7_BMS"} 3.294
 ```
-
-
 
 ## making the script autostart as a service
 If the script stops, that the inverter does not have a valid can-bus coomunication and hence all charging/discharging is stopped by the inverter. Making the script a service, even reloads the scripts in case e.g. it was killed.. 
@@ -112,7 +115,7 @@ WantedBy=multi-user.target
 
 ### systemd script for venv
 ```bash
-behn@rpi2:~ $ cat /etc/systemd/system/jk_pylon.service
+behn@rpi2:~ $ cat /etc/systemd/system/alien_master.service
 [Unit]
 Description=Launching alien_master JK_pylon converter
 After=network.target
@@ -133,17 +136,17 @@ WantedBy=multi-user.target
 ### autostarting and enabling the systemd script
 Once added the script execute:
 ```bash
-$ systemctl start jk_pylon
+$ systemctl start alien_master
 ```
 
 And automatically get it to start on boot:
 ```bash
-$ systemctl enable jk_pylon 
+$ systemctl enable alien_master
 ```
 
 stopping the script
 ```bash
-$ systemctl stop jk_pylon 
+$ systemctl stop alien_master
 ```
 
 cabling
@@ -199,3 +202,4 @@ thanks
 
 
  
+

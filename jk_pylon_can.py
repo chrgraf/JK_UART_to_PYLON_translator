@@ -31,8 +31,12 @@ import sys, os, io
 import struct
 import serial
 
-import numpy as np
 import os.path
+
+# self written ringbuffer
+from basic_ringbuf import myRingBuffer 
+current_max_size=20                      # elements in ringbuffer
+current_ringbuffer=myRingBuffer(current_max_size)
 
 # mqtt stuff
 from paho.mqtt import client as mqtt_client
@@ -41,9 +45,11 @@ port = 1883
 client_id = 'rpi2'
 
 write_to_file = True               # turn only on for debug. no upper size limit of the logfile!
-filename="/mnt/ramdisk/jk_python_can.log"
+#filename="./jk_python_can.log"
+filename="/mnt/ramdisk/jk_pylon.log"
 
-can_db="./pylon_CAN_210124.dbc"
+#can_db="./pylon_CAN_210124.dbc"
+can_db="/home/behn/jk_pylon/pylon_CAN_210124.dbc"
 
 
 sleepTime = 10
@@ -72,8 +78,7 @@ def byteArrayToHEX(byte_array):
 
 
 def control_loop (min_volt, max_volt, current):
-  global current_ringbuffer
-  current_max_size=10                            # elements in ringbuffer
+  global current_ringbuffer, current_max_size
   current_max_deviation_0=6                      # ampere it can overshoot without triggering the control-loop0
   current_max_deviation_1=12                     # ampere it can overshoot without triggering the control-loop0
   Battery_discharge_current_limit_default= 60
@@ -82,14 +87,10 @@ def control_loop (min_volt, max_volt, current):
   Battery_discharge_voltage_default      = 51
   oscillation=False
   
-  current_size=np.size(current_ringbuffer)
-  print ("current_size :",current_size)
-  if current_size>=current_max_size:
-    current_ringbuffer=np.delete(current_ringbuffer,0)
-  current_ringbuffer=np.append(current_ringbuffer,current)
-  print ("current_ringbuffer", current_ringbuffer)
-  current_max=np.max(current_ringbuffer)
-  current_min=np.min(current_ringbuffer)
+  current_ringbuffer.append(current)
+  print ("current_ringbuffer", current_ringbuffer.get())
+  current_max=current_ringbuffer.max()
+  current_min=current_ringbuffer.min()
   if (current_max >= current_max_deviation_1  and current_min < -current_max_deviation_1):
       Battery_charge_current_limit=current_max_deviation_1
       oscillation=True
@@ -158,6 +159,7 @@ try:
     bms = serial.Serial('/dev/ttyUSB0')
     bms.baudrate = 115200
     bms.timeout  = 0.2
+    print (bms.name)
 except:
     print("BMS not found.")
 
@@ -177,8 +179,8 @@ def sendBMSCommand(cmd_string):
 # This could be much better, but it works.
 def readBMS():
     global my_file 
-
     try: 
+        print ("qqqqqqqqqqqqqqqqqqqqqqqq")
         # Read all command
         sendBMSCommand('4E 57 00 13 00 00 00 00 06 03 00 00 00 00 00 00 68 00 00 01 29')
     
@@ -235,19 +237,18 @@ def readBMS():
                     print("cellcount=",cellcount)
 
                     # Voltages start at index 2, in groups of 3
-                    volt_array = np.array([])
-                    print (volt_array)
+                    volt_array = myRingBuffer(cellcount)
                     for i in range(cellcount) :
                         voltage = struct.unpack_from('>xH', data, i * 3 + 2)[0]/1000
-                        volt_array = np.append(volt_array, voltage)
+                        volt_array.append(voltage)
                         valName  = "mode=\"cell"+str(i+1)+"_BMS\""
                         valName  = "{" + valName + "}"
                         dataStr  = f"JK_BMS{valName} {voltage}"
                         #print(dataStr, file=fileObj)
                         print(dataStr)
-                    print (volt_array)
-                    max_monomer=np.max(volt_array)
-                    min_monomer=np.min(volt_array)
+                    print (volt_array.get())
+                    max_monomer=volt_array.max()
+                    min_monomer=volt_array.min()
                     print ("Min Monomer: ", min_monomer)
                     print ("Max Monomer: ", max_monomer)
                        
@@ -324,7 +325,7 @@ def readBMS():
 #sudo ip link set up vcan0
 
 db = cantools.db.load_file(can_db)
-
+#db = cantools.db.load_file(/home/behn/jk_pylon/pylon_CAN_210124.dbc)
 msg_data_Network_alive_msg = {
     'Alive_packet': 0}
 
@@ -429,7 +430,7 @@ def test_periodic_send_with_modifying_data(bus):
         'SoH': 100})
       if (write_to_file):
         print ("SOC sent via canbus            : ", my_soc,file=my_file)
-        # my_file.flush()    # do int once  
+        #my_file.flush()    # do int once  
       msg_tx_Battery_actual_values_UIt.data = db.encode_message('Battery_actual_values_UIt',{
         'Battery_temperature' : my_temp,
         'Battery_current' : my_ampere,
@@ -461,7 +462,6 @@ if __name__ == "__main__":
        my_file=open(filename,'w')
 
     reset_msg = can.Message(arbitration_id=0x00, data=[0, 0, 0, 0, 0, 0], is_extended_id=False)
-    current_ringbuffer=np.array([])
 
     for interface, channel in [
         #('socketcan', 'vcan0', 'can0' ),

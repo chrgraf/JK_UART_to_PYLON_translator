@@ -1,8 +1,11 @@
 # copy this file into /etc/systemd/system
 # replace all occurences of /home/behn/jk_pylon with your venv dir
-# make the service starting after eboot: systemctl enable jk_pylon
+# make the service starting after reboot: systemctl enable jk_pylon
 # show status: systemctl show jk_pylon
 # stop it: systemctl stop jk_pylon
+# if you change this script, reload systemctl: systemctl daemon-reload
+
+
 
 [Unit]
 Description=Launching JK_pylon converter
@@ -15,8 +18,8 @@ Restart=always
 RestartSec=1
 User=behn
 WorkingDirectory=/home/behn/jk_pylon
-Environment=PYTHONPATH=/home/behn/jk_pylon
-ExecStart=/home/behn/jk_pylon/bin/python jk_pylon_can.py
+Environment=PYTHONPATH=/home/behn/jk_pylon_venv
+ExecStart=/home/behn/jk_pylon_venv/bin/python jk_pylon_can.py
 
 [Install]
 WantedBy=multi-user.target

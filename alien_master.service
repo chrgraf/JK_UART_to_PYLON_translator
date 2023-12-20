@@ -1,0 +1,16 @@
+[Unit]
+Description=Launching alien_master JK_pylon converter
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+User=behn
+#ExecStart=/home/behn/PYLON_EMU-master/alien_master1.py
+ExecStart=/home/behn/jk_pylon/jk_pylon_can.py
+
+[Install]
+WantedBy=multi-user.target
+

@@ -1,0 +1,6 @@
+include/
+bin/
+lib/
+pyvenv.cfg
+old/
+*.log
