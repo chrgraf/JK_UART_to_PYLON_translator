@@ -24,7 +24,7 @@ https://github.com/juamiso/PYLON_EMU
 2) PurpleAlien, who developed the JK-UART script
 https://github.com/PurpleAlien/jk-bms_grafana
 
-#Tested
+# Tested
 ```
 RPI2          : with wavshare can-hat and usb-serial converter
 JK BMS        : JK Smart Active Balance BMS BD6A20S10P
@@ -86,9 +86,6 @@ JK_BMS{mode="cell7_BMS"} 3.294
 
 
 
-## installing python dependencies
-
-
 ## making the script autostart as a service
 If the script stops, that the inverter does not have a valid can-bus coomunication and hence all charging/discharging is stopped by the inverter. Making the script a service, even reloads the scripts in case e.g. it was killed.. 
 
@@ -115,7 +112,7 @@ WantedBy=multi-user.target
 
 ### systemd script for venv
 ```bash
-behn@rpi2:~ $ cat /etc/systemd/system/alien_master.service
+behn@rpi2:~ $ cat /etc/systemd/system/jk_pylon.service
 [Unit]
 Description=Launching alien_master JK_pylon converter
 After=network.target
