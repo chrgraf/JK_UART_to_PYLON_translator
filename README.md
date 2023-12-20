@@ -33,11 +33,61 @@ Solis inverter: RAI-3K-48ES-5G
 
 
 
-Install
-========
+# Install
+
 I will add more info over time.
 But its a good idea to clone https://github.com/juamiso/PYLON_EMU to get hold of the required pylon_CAN_210124.dbc file.
 After having all python libs installed, just execute the script delivered via this repo
+
+## running the script in python venv
+I am using numpy lib in mine script, which does not have a native ubuntu repo. I decided to go via python venv to run the script.
+
+### preparing python venv
+```bash
+sudo apt update && sudo apt upgrade -y
+sudo apt install python3-pip -y
+sudo apt install build-essential libssl-dev libffi-dev python3-dev
+sudo apt install python3-venv -y
+```
+
+as a next create the venv
+This creates a directory jk_pylon
+```bash
+python3 -m venv jk_pylon
+```
+
+now copy all required files into this directory
+```bash
+cp alien_master1.py pylon_CAN_210124.dbc requirements.txt ./jk_pylon/
+
+# activating the venv - prompt shall look like this after executing the activate : (jk_pylon)..:~/jk_pylon $
+cd ./jk_pylon/
+source ./bin/activate
+
+# install all dependencis
+pip3 install -r requirements.txt
+
+# finally run the script
+./jk_pylon_can.py
+
+(jk_pylon) behn@rpi2:~/jk_pylon $ ./jk_pylon_can.py
+Carrying out cyclic tests with socketcan interface
+Starting to send a message every 1s
+cellcount= 16
+[]
+JK_BMS{mode="cell1_BMS"} 3.293
+JK_BMS{mode="cell2_BMS"} 3.295
+JK_BMS{mode="cell3_BMS"} 3.294
+JK_BMS{mode="cell4_BMS"} 3.294
+JK_BMS{mode="cell5_BMS"} 3.294
+JK_BMS{mode="cell6_BMS"} 3.294
+JK_BMS{mode="cell7_BMS"} 3.294
+```
+
+
+
+## installing python dependencies
+
 
 ## making the script autostart as a service
 If the script stops, that the inverter does not have a valid can-bus coomunication and hence all charging/discharging is stopped by the inverter. Making the script a service, even reloads the scripts in case e.g. it was killed.. 
@@ -62,6 +112,26 @@ ExecStart=/home/behn/PYLON_EMU-master/alien_master1.py       # change path accor
 [Install]
 WantedBy=multi-user.target
 ```
+
+### systemd script for venv
+```bash
+behn@rpi2:~ $ cat /etc/systemd/system/alien_master.service
+[Unit]
+Description=Launching alien_master JK_pylon converter
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+User=xxx                                                     # change name according to your account used on your own RPI
+ExecStart=/home/behn/PYLON_EMU-master/alien_master1.py       # change path accordingly to match your setup
+
+[Install]
+WantedBy=multi-user.target
+```
+
 
 ### autostarting and enabling the systemd script
 Once added the script execute:
