@@ -159,7 +159,6 @@ try:
     bms = serial.Serial('/dev/ttyUSB0')
     bms.baudrate = 115200
     bms.timeout  = 0.2
-    print (bms.name)
 except:
     print("BMS not found.")
 

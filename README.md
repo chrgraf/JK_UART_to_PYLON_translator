@@ -38,56 +38,6 @@ I will add more info over time.
 But its a good idea to clone https://github.com/juamiso/PYLON_EMU to get hold of the required pylon_CAN_210124.dbc file.
 After having all python libs installed, just execute the script delivered via this repo
 
-## running the script in python venv
-I am using numpy lib in mine script, which does not have a native ubuntu repo. I decided to go via python venv to run the script.
-
-### preparing python venv
-```bash
-sudo apt update && sudo apt upgrade -y
-sudo apt install python3-pip -y
-sudo apt install build-essential libssl-dev libffi-dev python3-dev
-sudo apt install python3-venv -y
-```
-
-as a next create the venv
-This creates a directory jk_pylon
-```bash
-python -m venv jk_pylon_venv
-```
-
-This article says itsa bad idea to put your project-files into same directory which holds your venv. So lets keep the venv-directory jk_pylon_venv and the project-dir jk_pylon seperated.
-
-now copy all required files into this directory
-```bash
-cp alien_master1.py pylon_CAN_210124.dbc requirements.txt ./jk_pylon/
-```
-
-# activating the venv
-prompt shall look like this after executing the activate : (jk_pylon)..:~/jk_pylon $
-```bash
-$ source jk_pylon_venv/bin/activate
-```
-
-# install all dependencis
-```bash
-(jk_pylon_venv) behn@rpi2:~ $ pwd
-/home/behn
-(jk_pylon_venv) behn@rpi2:~ $ pip3 install -r ./jk_pylon/requirements.txt
-```
-
-# finally run the script
-above source "source jk_pylon_venv/bin/activate" should have chnaged your prompt, indicating (jk_pylon_venv)
-
-```bash
-# change into the projct directory, required to find the pylon_CAN_210124.dbc file
-(jk_pylon_venv) behn@rpi2:~ $ cd jk_pylon
-# launch the script
-(jk_pylon_venv) behn@rpi2:~/jk_pylon $ ./jk_pylon_can.py
-Carrying out cyclic tests with socketcan interface
-Starting to send a message every 1s
-cellcount= 16
-[]
-```
 
 ## making the script autostart as a service
 If the script stops, that the inverter does not have a valid can-bus coomunication and hence all charging/discharging is stopped by the inverter. Making the script a service, even reloads the scripts in case e.g. it was killed.. 
@@ -95,25 +45,6 @@ If the script stops, that the inverter does not have a valid can-bus coomunicati
 some good reading: https://medium.com/@benmorel/creating-a-linux-service-with-systemd-611b5c8b91d6
 
 ### systemd script
-```bash
-behn@rpi2:~ $ cat /etc/systemd/system/alien_master.service
-[Unit]
-Description=Launching alien_master JK_pylon converter
-After=network.target
-StartLimitIntervalSec=0
-
-[Service]
-Type=simple
-Restart=always
-RestartSec=1
-User=xxx                                                     # change name according to your account used on your own RPI
-ExecStart=/home/behn/PYLON_EMU-master/alien_master1.py       # change path accordingly to match your setup
-
-[Install]
-WantedBy=multi-user.target
-```
-
-### systemd script for venv
 ```bash
 behn@rpi2:~ $ cat /etc/systemd/system/alien_master.service
 [Unit]
@@ -201,5 +132,91 @@ This oscialltion-counteract routine is in a very early stage though..
 thanks
 
 
+# BELOW IS NOT WORKING
+# trying to use VENV with systemd fails to open the ttyUSB port
  
+## running the script in python venv
+I am using numpy lib in mine script, which does not have a native ubuntu repo. I decided to go via python venv to run the script.
 
+### preparing python venv
+```bash
+sudo apt update && sudo apt upgrade -y
+sudo apt install python3-pip -y
+sudo apt install build-essential libssl-dev libffi-dev python3-dev
+sudo apt install python3-venv -y
+```
+
+as a next create the venv
+This creates a directory jk_pylon
+```bash
+python -m venv jk_pylon_venv
+```
+
+This article says itsa bad idea to put your project-files into same directory which holds your venv. So lets keep the venv-directory jk_pylon_venv and the project-dir jk_pylon seperated.
+
+now copy all required files into this directory
+```bash
+cp alien_master1.py pylon_CAN_210124.dbc requirements.txt ./jk_pylon/
+```
+
+# activating the venv
+prompt shall look like this after executing the activate : (jk_pylon)..:~/jk_pylon $
+```bash
+$ source jk_pylon_venv/bin/activate
+```
+
+# install all dependencis
+```bash
+(jk_pylon_venv) behn@rpi2:~ $ pwd
+/home/behn
+(jk_pylon_venv) behn@rpi2:~ $ pip3 install -r ./jk_pylon/requirements.txt
+```
+
+# finally run the script
+above source "source jk_pylon_venv/bin/activate" should have chnaged your prompt, indicating (jk_pylon_venv)
+
+```bash
+# change into the projct directory, required to find the pylon_CAN_210124.dbc file
+(jk_pylon_venv) behn@rpi2:~ $ cd jk_pylon
+# launch the script
+(jk_pylon_venv) behn@rpi2:~/jk_pylon $ ./jk_pylon_can.py
+Carrying out cyclic tests with socketcan interface
+Starting to send a message every 1s
+cellcount= 16
+[]
+```
+
+## systemd script  - not this fails to open the ttyUSB, so do not use..
+
+```bash
+root@rpi2:/etc/systemd/system# cat jk_pylon.service
+# copy this file into /etc/systemd/system
+# replace all occurences of /home/behn/jk_pylon with your venv dir
+# make the service starting after reboot: systemctl enable jk_pylon
+# show status: systemctl show jk_pylon
+# stop it: systemctl stop jk_pylon
+# id you chnage this scrip[t, reload systemctl: systemctl daemon-reload
+
+
+
+[Unit]
+Description=Launching JK_pylon converter
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+#User=root
+User=behn
+Group=dialout
+WorkingDirectory=/home/behn/jk_pylon
+#ExecStart=/home/behn/jk_pylon_venv/bin/python jk_pylon_can.py
+ExecStart=/home/behn/jk_pylon_venv/bin/python -m jk_pylon_can
+StandardOutput=tty
+TTYPath=/dev/pts/1
+
+[Install]
+WantedBy=multi-user.target
+```
