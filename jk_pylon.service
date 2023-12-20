@@ -1,0 +1,17 @@
+[Unit]
+Description=Launching JK_pylon converter
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+User=behn
+WorkingDirectory=/home/behn/jk_pylon
+Environment=PYTHONPATH=/home/behn/jk_pylon
+ExecStart=/home/behn/jk_pylon/bin/python jk_pylon_can.py
+
+[Install]
+WantedBy=multi-user.target
+
