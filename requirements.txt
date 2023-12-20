@@ -1,0 +1,7 @@
+numpy
+cantools
+can
+serial
+
+paho-mqtt
+
