@@ -18,54 +18,42 @@
 # platform tested: RPI2 with wavshare canhat
 ###############################################################################################
 
-# import for canbus
+# canbus
 from __future__ import print_function
 import cantools
 import time
 from binascii import hexlify
 import can
 
-# imports for JK-stuff
+can_db="./pylon_CAN_210124.dbc"
+#can_db="/home/behn/jk_pylon/pylon_CAN_210124.dbc"
+
+# JK-stuff
 import time
 import sys, os, io
 import struct
 import serial
 
+# other imports
 import os.path
+
+#mqtt - for logging-purposes we send some stuff to a mqtt-broker.
+# not required to operate this script successful
+import my_mqtt
 
 # self written ringbuffer
 from basic_ringbuf import myRingBuffer 
 current_max_size=20                      # elements in ringbuffer
 current_ringbuffer=myRingBuffer(current_max_size)
 
-# mqtt stuff
-from paho.mqtt import client as mqtt_client
-broker = '192.168.178.116'
-port = 1883
-client_id = 'rpi2'
-
+# logfile
 write_to_file = True               # turn only on for debug. no upper size limit of the logfile!
 #filename="./jk_python_can.log"
 filename="/mnt/ramdisk/jk_pylon.log"
 
-#can_db="./pylon_CAN_210124.dbc"
-can_db="/home/behn/jk_pylon/pylon_CAN_210124.dbc"
-
 
 sleepTime = 10
 
-def connect_mqtt():
-    def on_connect(client, userdata, flags, rc):
-        if rc == 0:
-            print("Connected to MQTT Broker!")
-        else:
-            print("Failed to connect, return code %d\n", rc)
-    # Set Connecting Client ID
-    client = mqtt_client.Client(client_id)
-    #client.username_pw_set(username, password)
-    client.on_connect = on_connect
-    client.connect(broker, port)
-    return client
 
 
 def byteArrayToHEX(byte_array):
@@ -78,7 +66,7 @@ def byteArrayToHEX(byte_array):
 
 
 def control_loop (min_volt, max_volt, current):
-  global current_ringbuffer, current_max_size
+  global current_ringbuffer, current_max_size, mqtt_client
   current_max_deviation_0=6                      # ampere it can overshoot without triggering the control-loop0
   current_max_deviation_1=12                     # ampere it can overshoot without triggering the control-loop0
   Battery_discharge_current_limit_default= 60
@@ -131,6 +119,16 @@ def control_loop (min_volt, max_volt, current):
        Battery_charge_current_limit = 60
     elif (max_volt>=2.7):
        Battery_charge_current_limit = 30
+    else:
+       Battery_charge_current_limit = Battery_charge_current_limit_default
+
+  topic="jk_pylon/Battery_charge_current_limit"
+  message=Battery_charge_current_limit
+  my_mqtt.publish(mqtt_client,topic,message)      
+
+  topic="jk_pylon/Battery_discharge_current_limit"
+  message=str(Battery_discharge_current_limit)
+  my_mqtt.publish(mqtt_client,topic,message)      
 
   print ("Battery_charge_current_limit   : ", Battery_charge_current_limit)
   print ("Battery_discharge_current_limit: ", Battery_discharge_current_limit)
@@ -404,6 +402,7 @@ msg_tx_Battery_Error_Warnings = can.Message(arbitration_id=Battery_Error_Warning
 
 
 def test_periodic_send_with_modifying_data(bus):
+    global mqtt_client
     Alive_packet = 0 #counter
     print("Starting to send a message every 1s")
     task_tx_Network_alive_msg = bus.send_periodic(msg_tx_Network_alive_msg, 1)
@@ -420,7 +419,6 @@ def test_periodic_send_with_modifying_data(bus):
 #        task.stop()
 #        return
     while True:
-      connect_mqtt()
       my_soc,my_volt,my_ampere,my_temp=readBMS()
       Alive_packet = Alive_packet+1
       print("updating data ", Alive_packet )
@@ -451,6 +449,7 @@ def test_periodic_send_with_modifying_data(bus):
           my_file.flush()
 
       time.sleep(sleepTime)
+
       print ("----------------------")
     task.stop()
     print("done")
@@ -459,6 +458,8 @@ def test_periodic_send_with_modifying_data(bus):
 if __name__ == "__main__":
     if (write_to_file):
        my_file=open(filename,'w')
+    mqtt_client=my_mqtt.connect_mqtt()
+    mqtt_client.loop_start()
 
     reset_msg = can.Message(arbitration_id=0x00, data=[0, 0, 0, 0, 0, 0], is_extended_id=False)
 
