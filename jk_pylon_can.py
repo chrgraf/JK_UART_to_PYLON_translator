@@ -40,6 +40,7 @@ import os.path
 #mqtt - for logging-purposes we send some stuff to a mqtt-broker.
 # not required to operate this script successful
 import my_mqtt
+last_mqtt_run=0
 
 # self written ringbuffer
 from basic_ringbuf import myRingBuffer 
@@ -65,8 +66,8 @@ def byteArrayToHEX(byte_array):
     return hex_string
 
 
-def control_loop (min_volt, max_volt, current):
-  global current_ringbuffer, current_max_size, mqtt_client
+def control_loop (min_volt, max_volt, current,actual_time):
+  global current_ringbuffer, current_max_size, mqtt_client, last_mqtt_run
   current_max_deviation_0=6                      # ampere it can overshoot without triggering the control-loop0
   current_max_deviation_1=12                     # ampere it can overshoot without triggering the control-loop0
   Battery_discharge_current_limit_default= 60
@@ -121,15 +122,20 @@ def control_loop (min_volt, max_volt, current):
        Battery_charge_current_limit = 30
     else:
        Battery_charge_current_limit = Battery_charge_current_limit_default
-
-  topic="jk_pylon/Battery_charge_current_limit"
-  message=Battery_charge_current_limit
-  my_mqtt.publish(mqtt_client,topic,message)      
-
-  topic="jk_pylon/Battery_discharge_current_limit"
-  message=str(Battery_discharge_current_limit)
-  my_mqtt.publish(mqtt_client,topic,message)      
-
+  
+  print ("actual_time",actual_time)
+  print ("last_last_run",last_mqtt_run)
+  if (actual_time - 60 > last_mqtt_run ) :
+      print (">>>>>>>>>>>>>>>>>>>>>>")
+      last_mqtt_run=actual_time
+      topic="jk_pylon/Battery_charge_current_limit"
+      message=Battery_charge_current_limit
+      my_mqtt.publish(mqtt_client,topic,message)      
+    
+      topic="jk_pylon/Battery_discharge_current_limit"
+      message=str(Battery_discharge_current_limit)
+      my_mqtt.publish(mqtt_client,topic,message)      
+    
   print ("Battery_charge_current_limit   : ", Battery_charge_current_limit)
   print ("Battery_discharge_current_limit: ", Battery_discharge_current_limit)
   if (write_to_file):
@@ -174,10 +180,9 @@ def sendBMSCommand(cmd_string):
     return
 
 # This could be much better, but it works.
-def readBMS():
+def readBMS(actual_time):
     global my_file 
     try: 
-        print ("qqqqqqqqqqqqqqqqqqqqqqqq")
         # Read all command
         sendBMSCommand('4E 57 00 13 00 00 00 00 06 03 00 00 00 00 00 00 68 00 00 01 29')
     
@@ -296,7 +301,8 @@ def readBMS():
 
                     # SOC/ Remaining capacity, %
                     unmodified_capacity = struct.unpack_from('>B', data, bytecount + 18)[0]
-                    allow_larger_100_percent_soc = True
+                    #allow_larger_100_percent_soc = True
+                    allow_larger_100_percent_soc = False
                     if (unmodified_capacity >=100 and allow_larger_100_percent_soc):
                        capacity=unmodified_capacity-5
                     else:
@@ -308,7 +314,7 @@ def readBMS():
                        # my_file.flush()    # do int once  
   
                     
-                    control_loop (min_monomer, max_monomer, current)
+                    control_loop (min_monomer, max_monomer, current,actual_time)
  
         bms.reset_input_buffer()    
     
@@ -419,7 +425,8 @@ def test_periodic_send_with_modifying_data(bus):
 #        task.stop()
 #        return
     while True:
-      my_soc,my_volt,my_ampere,my_temp=readBMS()
+      actual_time=time.time()
+      my_soc,my_volt,my_ampere,my_temp=readBMS(actual_time)
       Alive_packet = Alive_packet+1
       print("updating data ", Alive_packet )
       msg_tx_Network_alive_msg.data = db.encode_message('Network_alive_msg',{'Alive_packet': Alive_packet})
