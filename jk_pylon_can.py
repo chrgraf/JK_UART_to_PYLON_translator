@@ -52,6 +52,9 @@ write_to_file = True               # turn only on for debug. no upper size limit
 #filename="./jk_python_can.log"
 filename="/mnt/ramdisk/jk_pylon.log"
 
+# oscillation
+last_osci_run = 0
+last_monomer_run = 0
 
 sleepTime = 10
 
@@ -67,11 +70,16 @@ def byteArrayToHEX(byte_array):
 
 
 def control_loop (min_volt, max_volt, current,actual_time):
-  global current_ringbuffer, current_max_size, mqtt_client, last_mqtt_run
+  global current_ringbuffer, current_max_size, mqtt_client, last_mqtt_run, last_monomer_run, last_osci_run
+  oscillation_run_interval = 60
+  monomer_run_interval = 60
+
   current_max_deviation_0=6                      # ampere it can overshoot without triggering the control-loop0
   current_max_deviation_1=12                     # ampere it can overshoot without triggering the control-loop0
   Battery_discharge_current_limit_default= 60
   Battery_charge_current_limit_default   = 60
+  Battery_charge_current_limit = Battery_charge_current_limit_default
+  Battery_discharge_current_limit = Battery_discharge_current_limit_default
   Battery_charge_voltage_default         = 56
   Battery_discharge_voltage_default      = 51
   oscillation=False
@@ -80,52 +88,61 @@ def control_loop (min_volt, max_volt, current,actual_time):
   print ("current_ringbuffer", current_ringbuffer.get())
   current_max=current_ringbuffer.max()
   current_min=current_ringbuffer.min()
-  if (current_max >= current_max_deviation_1  and current_min < -current_max_deviation_1):
-      Battery_charge_current_limit=current_max_deviation_1
-      oscillation=True
-  elif (current_max >= current_max_deviation_0  and current_min < -current_max_deviation_0):
-      Battery_charge_current_limit=current_max_deviation_0
-      oscillation=True
-  else:
-      Battery_charge_current_limit=Battery_charge_current_limit_default
-  if (write_to_file):
-         print ("oscillation state              : ", oscillation,file=my_file)
 
-  # min_volt set the limit
-  if (min_volt>=3.3):
-     Battery_discharge_current_limit = 60
-  elif (min_volt>=3.1):
-     Battery_discharge_current_limit = 50
-  elif (min_volt>=3.0):
-     Battery_discharge_current_limit = 30
-  elif (min_volt>=2.9):
-     Battery_discharge_current_limit = 10
-  elif (min_volt<2.9):
-     Battery_discharge_current_limit = 0
-  else:
-     Battery_discharge_current_limit = Battery_discharge_current_limit_default
- 
-
-  if (not oscillation):
-    # max_volt the limit
-    if (max_volt>=3.55):
-       Battery_charge_current_limit = 0
-    elif (max_volt>=3.50):
-       Battery_charge_current_limit = 2
-    elif (max_volt>=3.47):
-       Battery_charge_current_limit = 15
-    elif (max_volt>=3.45):
-       Battery_charge_current_limit = 30
-    elif (max_volt>=3.0):
-       Battery_charge_current_limit = 60
-    elif (max_volt>=2.7):
-       Battery_charge_current_limit = 30
-    else:
-       Battery_charge_current_limit = Battery_charge_current_limit_default
+  if (actual_time - oscillation_run_interval > last_osci_run):
+      last_osci_run = actual_time
+      if (current_max >= current_max_deviation_1  and current_min < -current_max_deviation_1):
+          Battery_charge_current_limit=current_max_deviation_1
+          oscillation=True
+      elif (current_max >= current_max_deviation_0  and current_min < -current_max_deviation_0):
+          Battery_charge_current_limit=current_max_deviation_0
+          oscillation=True
+      else:
+          Battery_charge_current_limit=Battery_charge_current_limit_default
+      if (write_to_file):
+             print ("oscillation state              : ", oscillation,file=my_file)
+      topic="jk_pylon/oscillation_state"
+      if (oscillation):
+         message="1"
+      else:
+         message="0"
+      my_mqtt.publish(mqtt_client,topic,message)      
   
+
+  if (actual_time - monomer_run_interval > last_monomer_run ):   #wait monomer_run_interval
+       last_monomer_run = actual_time
+       if (not oscillation):
+          print("entering the min_max_monomer check")
+          # min_volt set the limit
+          if (min_volt>=3.3):
+             Battery_discharge_current_limit = 60
+          elif (min_volt>=3.1):
+             Battery_discharge_current_limit = 50
+          elif (min_volt>=3.0):
+             Battery_discharge_current_limit = 30
+          elif (min_volt>=2.9):
+             Battery_discharge_current_limit = 10
+          elif (min_volt<2.9):
+             Battery_discharge_current_limit = 0
+      
+
+          # max_volt the limit
+          if (max_volt>=3.55):
+              Battery_charge_current_limit = 0
+          elif (max_volt>=3.50):
+              Battery_charge_current_limit = 2
+          elif (max_volt>=3.47):
+              Battery_charge_current_limit = 15
+          elif (max_volt>=3.45):
+              Battery_charge_current_limit = 30
+          elif (max_volt>=3.0):
+              Battery_charge_current_limit = 60
+          elif (max_volt>=2.7):
+              Battery_charge_current_limit = 30
+ 
   print ("actual_time",actual_time)
-  print ("last_last_run",last_mqtt_run)
-  if (actual_time - 60 > last_mqtt_run ) :
+  print ("last_mqtt_run",last_mqtt_run)
+  if (actual_time - 60 > last_mqtt_run ):        #wait 60seconds before publish next mqtt
       print (">>>>>>>>>>>>>>>>>>>>>>")
       last_mqtt_run=actual_time
       topic="jk_pylon/Battery_charge_current_limit"
