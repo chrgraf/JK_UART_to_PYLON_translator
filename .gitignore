@@ -4,3 +4,5 @@ lib/
 pyvenv.cfg
 old/
 *.log
+get_files.sh
+
