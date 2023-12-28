@@ -44,7 +44,7 @@ last_mqtt_run=0
 
 # self written ringbuffer
 from basic_ringbuf import myRingBuffer 
-current_max_size=20                      # elements in ringbuffer
+current_max_size=60                      # elements in ringbuffer
 current_ringbuffer=myRingBuffer(current_max_size)
 
 # logfile
@@ -56,8 +56,13 @@ filename="/mnt/ramdisk/jk_pylon.log"
 last_osci_run = 0
 last_monomer_run = 0
 
-sleepTime = 10
+sleepTime = 1
 
+# global charge/discharge limits
+Battery_discharge_current_limit_default= 60
+Battery_charge_current_limit_default   = 60
+Battery_charge_current_limit = Battery_charge_current_limit_default
+Battery_discharge_current_limit = Battery_discharge_current_limit_default
 
 
 def byteArrayToHEX(byte_array):
@@ -70,19 +75,16 @@ def byteArrayToHEX(byte_array):
 
 
 def control_loop (min_volt, max_volt, current,actual_time):
-  global current_ringbuffer, current_max_size, mqtt_client, last_mqtt_run, last_monomer_run, last_osci_run
-  oscillation_run_interval = 60
-  monomer_run_interval = 60
+  global current_ringbuffer, current_max_size, mqtt_client, last_mqtt_run, last_monomer_run, last_osci_run, Battery_charge_current_limit, Battery_discharge_current_limit
+  oscillation_run_interval = 20
+  monomer_run_interval = 30
 
-  current_max_deviation_0=6                      # ampere it can overshoot without triggering the control-loop0
+  current_max_deviation_0=5                      # ampere it can overshoot without triggering the control-loop0
   current_max_deviation_1=12                     # ampere it can overshoot without triggering the control-loop0
-  Battery_discharge_current_limit_default= 60
-  Battery_charge_current_limit_default   = 60
-  Battery_charge_current_limit = Battery_charge_current_limit_default
-  Battery_discharge_current_limit = Battery_discharge_current_limit_default
   Battery_charge_voltage_default         = 56
   Battery_discharge_voltage_default      = 51
   oscillation=False
+  old_Battery_charge_current_limit= Battery_charge_current_limit
   
   current_ringbuffer.append(current)
   print ("current_ringbuffer", current_ringbuffer.get())
@@ -98,12 +100,18 @@ def control_loop (min_volt, max_volt, current,actual_time):
           Battery_charge_current_limit=current_max_deviation_0
           oscillation=True
       else:
-          Battery_charge_current_limit=Battery_charge_current_limit_default
+          # no osciallation
+          # slowly increase limit to max
+          Battery_charge_current_limit=old_Battery_charge_current_limit+3
+          if (Battery_charge_current_limit>Battery_charge_current_limit_default):
+               Battery_charge_current_limit=Battery_charge_current_limit_default
+
       if (write_to_file):
              print ("oscillation state              : ", oscillation,file=my_file)
       topic="jk_pylon/oscillation_state"
       if (oscillation):
          message="1"
+         current_ringbuffer=myRingBuffer(current_max_size)          # flush the ringbuffer
       else:
          message="0"
       my_mqtt.publish(mqtt_client,topic,message)      
@@ -139,14 +147,14 @@ def control_loop (min_volt, max_volt, current,actual_time):
               Battery_charge_current_limit = 60
           elif (max_volt>=2.7):
               Battery_charge_current_limit = 30
- 
+
   print ("actual_time",actual_time)
   print ("last_mqtt_run",last_mqtt_run)
   if (actual_time - 60 > last_mqtt_run ):        #wait 60seconds before publish next mqtt
       print (">>>>>>>>>>>>>>>>>>>>>>")
       last_mqtt_run=actual_time
       topic="jk_pylon/Battery_charge_current_limit"
-      message=Battery_charge_current_limit
+      message=str(Battery_charge_current_limit)
       my_mqtt.publish(mqtt_client,topic,message)      
     
       topic="jk_pylon/Battery_discharge_current_limit"
@@ -365,6 +373,7 @@ msg_data_Battery_actual_values_UIt = {
   'Battery_current' : 0,
   'Battery_voltage' : 0}
 
+# this gets overwritten in the oscialltion function
 msg_data_Battery_limits = {
  'Battery_discharge_current_limit' : 60,
  'Battery_charge_current_limit' : 59,
@@ -433,7 +442,7 @@ def test_periodic_send_with_modifying_data(bus):
     task_tx_Battery_Manufacturer = bus.send_periodic(msg_tx_Battery_Manufacturer, 1)
     task_tx_Battery_Request = bus.send_periodic(msg_tx_Battery_Request, 1)
     task_tx_Battery_actual_values_UIt = bus.send_periodic(msg_tx_Battery_actual_values_UIt, 1)
-    # done by the control loop
+    # sending init values only. modified by function control_loop, called from readBMS function
     #task_tx_Battery_limits = bus.send_periodic(msg_tx_Battery_limits, 1)
     task_tx_Battery_Error_Warnings = bus.send_periodic(msg_tx_Battery_Error_Warnings, 1)
     time.sleep(0.5)

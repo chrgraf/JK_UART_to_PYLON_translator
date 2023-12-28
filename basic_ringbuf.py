@@ -55,6 +55,7 @@ class myRingBuffer:
           if (x!=None and x>max):
              max=x
        return(max)
+
            
     def test():
        buf = myRingBuffer(4)
