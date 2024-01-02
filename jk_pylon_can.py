@@ -76,8 +76,8 @@ def byteArrayToHEX(byte_array):
 
 def control_loop (min_volt, max_volt, current,actual_time):
   global current_ringbuffer, current_max_size, mqtt_client, last_mqtt_run, last_monomer_run, last_osci_run, Battery_charge_current_limit, Battery_discharge_current_limit
-  oscillation_run_interval = 20
-  monomer_run_interval = 30
+  oscillation_run_interval = 10
+  monomer_run_interval = 10
 
   current_max_deviation_0=5                      # ampere it can overshoot without triggering the control-loop0
   current_max_deviation_1=12                     # ampere it can overshoot without triggering the control-loop0
@@ -117,35 +117,34 @@ def control_loop (min_volt, max_volt, current,actual_time):
       my_mqtt.publish(mqtt_client,topic,message)      
   
 
+  # independant from osciallation, monomar overwrites anythin
   if (actual_time - monomer_run_interval > last_monomer_run ):   #wait monomer_run_interval
-       last_monomer_run = actual_time
-       if (not oscillation):
-          print("entering the min_max_monomer check")
-          # min_volt set the limit
-          if (min_volt>=3.3):
+        last_monomer_run = actual_time
+        #if (not oscillation):
+        print("entering the min_max_monomer check")
+        # min_volt set the limit
+        if (min_volt>=3.3):
              Battery_discharge_current_limit = 60
-          elif (min_volt>=3.1):
-             Battery_discharge_current_limit = 50
-          elif (min_volt>=3.0):
+        elif (min_volt>=3.25):
              Battery_discharge_current_limit = 30
-          elif (min_volt>=2.9):
+        elif (min_volt>=3.2):
              Battery_discharge_current_limit = 10
-          elif (min_volt<2.9):
+        elif (min_volt>3.1):
+             Battery_discharge_current_limit = 5
+        elif (min_volt<=3.1):
              Battery_discharge_current_limit = 0
       
 
-          # max_volt the limit
-          if (max_volt>=3.55):
+        # max_volt the limit
+        if (max_volt>=3.60):
               Battery_charge_current_limit = 0
-          elif (max_volt>=3.50):
+        elif (max_volt>=3.55):
               Battery_charge_current_limit = 2
-          elif (max_volt>=3.47):
+        elif (max_volt>=3.50):
+              Battery_charge_current_limit = 5
+        elif (max_volt>=3.47):
               Battery_charge_current_limit = 15
-          elif (max_volt>=3.45):
-              Battery_charge_current_limit = 30
-          elif (max_volt>=3.0):
-              Battery_charge_current_limit = 60
-          elif (max_volt>=2.7):
+        elif (max_volt<=2.9):
               Battery_charge_current_limit = 30
 
   print ("actual_time",actual_time)
