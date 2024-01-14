@@ -30,6 +30,7 @@ can_db="./pylon_CAN_210124.dbc"
 
 # JK-stuff
 import time
+import datetime
 import sys, os, io
 import struct
 import serial
@@ -43,7 +44,7 @@ import my_mqtt
 last_mqtt_run=0
 
 # self written ringbuffer
-from basic_ringbuf import myRingBuffer 
+from my_basic_ringbuf import myRingBuffer 
 current_max_size=60                      # elements in ringbuffer
 current_ringbuffer=myRingBuffer(current_max_size)
 
@@ -64,6 +65,9 @@ Battery_charge_current_limit_default   = 60
 Battery_charge_current_limit = Battery_charge_current_limit_default
 Battery_discharge_current_limit = Battery_discharge_current_limit_default
 
+timestamp_discharge_limit_change = time.time() 
+timestamp_charge_limit_change = time.time() 
+
 
 def byteArrayToHEX(byte_array):
     hex_string = ""
@@ -75,15 +79,15 @@ def byteArrayToHEX(byte_array):
 
 
 def control_loop (min_volt, max_volt, current,actual_time):
-  global current_ringbuffer, current_max_size, mqtt_client, last_mqtt_run, last_monomer_run, last_osci_run, Battery_charge_current_limit, Battery_discharge_current_limit
+  global current_ringbuffer, current_max_size, mqtt_client, last_mqtt_run, last_monomer_run, last_osci_run, Battery_charge_current_limit, Battery_discharge_current_limit, msg_data_Battery_limits, timestamp_discharge_limit_change, timestamp_charge_limit_change
+
   oscillation_run_interval = 10
-  monomer_run_interval = 10
+  monomer_run_interval = 5
 
   current_max_deviation_0=5                      # ampere it can overshoot without triggering the control-loop0
   current_max_deviation_1=12                     # ampere it can overshoot without triggering the control-loop0
   Battery_charge_voltage_default         = 56
   Battery_discharge_voltage_default      = 51
-  oscillation=False
   old_Battery_charge_current_limit= Battery_charge_current_limit
   
   current_ringbuffer.append(current)
@@ -91,65 +95,103 @@ def control_loop (min_volt, max_volt, current,actual_time):
   current_max=current_ringbuffer.max()
   current_min=current_ringbuffer.min()
 
-  if (actual_time - oscillation_run_interval > last_osci_run):
-      last_osci_run = actual_time
-      if (current_max >= current_max_deviation_1  and current_min < -current_max_deviation_1):
-          Battery_charge_current_limit=current_max_deviation_1
-          oscillation=True
-      elif (current_max >= current_max_deviation_0  and current_min < -current_max_deviation_0):
-          Battery_charge_current_limit=current_max_deviation_0
-          oscillation=True
-      else:
-          # no osciallation
-          # slowly increase limit to max
-          Battery_charge_current_limit=old_Battery_charge_current_limit+3
-          if (Battery_charge_current_limit>Battery_charge_current_limit_default):
-               Battery_charge_current_limit=Battery_charge_current_limit_default
-
-      if (write_to_file):
-             print ("oscillation state              : ", oscillation,file=my_file)
-      topic="jk_pylon/oscillation_state"
-      if (oscillation):
-         message="1"
-         current_ringbuffer=myRingBuffer(current_max_size)          # flush the ringbuffer
-      else:
-         message="0"
-      my_mqtt.publish(mqtt_client,topic,message)      
-  
-
-  # independant from osciallation, monomar overwrites anythin
+  # run this only for each monomer_run_interval interval
   if (actual_time - monomer_run_interval > last_monomer_run ):   #wait monomer_run_interval
         last_monomer_run = actual_time
-        #if (not oscillation):
         print("entering the min_max_monomer check")
+        
+        # setting the discharge limit
+        ##############################
+        DIS=60
         # min_volt set the limit
-        if (min_volt>=3.3):
-             Battery_discharge_current_limit = 60
-        elif (min_volt>=3.25):
-             Battery_discharge_current_limit = 30
-        elif (min_volt>=3.2):
-             Battery_discharge_current_limit = 10
-        elif (min_volt>3.1):
-             Battery_discharge_current_limit = 5
-        elif (min_volt<=3.1):
-             Battery_discharge_current_limit = 0
-      
+        if (min_volt>=3.25):
+             DIS = 60
+        elif (min_volt>=3.15):
+             DIS = 30
+        elif (min_volt<=3.05):
+             DIS = 0
+        
+        # making the discharge-limit smaller is always ok
+        if (DIS<Battery_discharge_current_limit):
+             Battery_discharge_current_limit=DIS
+             timestamp_discharge_limit_change=actual_time
+        # in case the derived discharge-limit is higher then previuos, lets wait an our to allow increasing the discharge
+        elif (actual_time - 3600 > timestamp_discharge_limit_change ):
+             Battery_discharge_current_limit=DIS
+        print ("debug: ", Battery_discharge_current_limit)
 
+
+        # setting the charge limit
+        ##############################
+        volt_range_allow_osci_detect=3.4
+        c_limit=60
         # max_volt the limit
         if (max_volt>=3.60):
-              Battery_charge_current_limit = 0
+              c_limit= 0
         elif (max_volt>=3.55):
-              Battery_charge_current_limit = 2
+              c_limit= 2
         elif (max_volt>=3.50):
-              Battery_charge_current_limit = 5
-        elif (max_volt>=3.47):
-              Battery_charge_current_limit = 15
-        elif (max_volt<=2.9):
-              Battery_charge_current_limit = 30
+              c_limit= 5
+        elif (max_volt>=3.46):
+              c_limit= 10
+        elif (max_volt>=3.43):
+              c_limit= 30
+        elif (max_volt>volt_range_allow_osci_detect):
+              c_limit= 60
+        
+        # making the charge-limit smaller is always ok
+        if (c_limit<Battery_charge_current_limit):
+             Battery_charge_current_limit=c_limit
+             timestamp_charge_limit_change=actual_time
+        # in case the derived discharge-limit is higher then previuos, lets wait an our to allow increasing the charge
+        elif (actual_time - 3600 > timestamp_charge_limit_change ):
+             Battery_charge_current_limit=c_limit
+        print ("debug: ", Battery_charge_current_limit)
+ 
+        
+        #if (False):
+        if (True):
+         # max_volt_voltage must be smaller then 3.35 volt for oscilation detection
+         # allow oscialltion detection
+         oscillation=False
+         if ((max_volt<volt_range_allow_osci_detect) and (actual_time - oscillation_run_interval > last_osci_run)):
+             last_osci_run = actual_time
+             if (current_max >= current_max_deviation_1  and current_min < -current_max_deviation_1):
+                 #Battery_charge_current_limit=current_max_deviation_1
+                 oscillation=True
+             elif (current_max >= current_max_deviation_0  and current_min < -current_max_deviation_0):
+                 #Battery_charge_current_limit=current_max_deviation_0
+                 oscillation=True
+             else:
+                 # no osciallation
+                 # slowly increase limit to max
+                 #Battery_charge_current_limit=old_Battery_charge_current_limit+3
+                 if (Battery_charge_current_limit>Battery_charge_current_limit_default):
+                      Battery_charge_current_limit=Battery_charge_current_limit_default
+ 
+             if (write_to_file):
+                    print ("oscillation state              : ", oscillation,file=my_file)
+                    print ("Charge_limit after osci_run    : ", Battery_charge_current_limit, file=my_file)
+                    print (current_ringbuffer.get(), file=my_file)
+
+             topic="jk_pylon/oscillation_state"
+             if (oscillation):
+                message="1"
+                current_ringbuffer=myRingBuffer(current_max_size)          # flush the ringbuffer
+             else:
+                message="0"
+             my_mqtt.publish(mqtt_client,topic,message)      
+
+  # only for debug - hard enforcing a limit 
+  if (write_to_file):
+     print ("Battery_charge_current_limit before manual overwrite", Battery_charge_current_limit, file=my_file)
+
+  #Battery_discharge_current_limit= 10
+  #Battery_charge_current_limit= 2
 
   print ("actual_time",actual_time)
   print ("last_mqtt_run",last_mqtt_run)
-  if (actual_time - 60 > last_mqtt_run ):        #wait 60seconds before publish next mqtt
+  if (actual_time - 20 > last_mqtt_run ):        #wait 20seconds before publish next mqtt
       print (">>>>>>>>>>>>>>>>>>>>>>")
       last_mqtt_run=actual_time
       topic="jk_pylon/Battery_charge_current_limit"
@@ -160,20 +202,26 @@ def control_loop (min_volt, max_volt, current,actual_time):
       message=str(Battery_discharge_current_limit)
       my_mqtt.publish(mqtt_client,topic,message)      
     
-  print ("Battery_charge_current_limit   : ", Battery_charge_current_limit)
-  print ("Battery_discharge_current_limit: ", Battery_discharge_current_limit)
+
+  print ("CANBUS: Battery_charge_current_limit   : ", Battery_charge_current_limit)
+  print ("CANBUS: Battery_discharge_current_limit: ", Battery_discharge_current_limit)
+  now = datetime.datetime.now()
   if (write_to_file):
     print ("min_volt, max_volt             : ", min_volt, max_volt,file=my_file)
     print ("Battery_charge_current_limit   : ", Battery_charge_current_limit,file=my_file)
     print ("Battery_discharge_current_limit: ", Battery_discharge_current_limit,file=my_file)
-    #my_file.write (">h ")
-    # my_file.flush()    # flush is done once in the main
-  
+    print ("Date                           : ", now, file=my_file)
+
+ 
   msg_data_Battery_limits = {
      'Battery_discharge_current_limit' : Battery_discharge_current_limit,
      'Battery_charge_current_limit' : Battery_charge_current_limit,
      'Battery_charge_voltage' : Battery_charge_voltage_default,
      'Battery_discharge_voltage' : Battery_discharge_voltage_default }
+  if (write_to_file):
+    print (msg_data_Battery_limits,file=my_file)
+  print (msg_data_Battery_limits)
+
 
   Battery_limits = db.get_message_by_name('Battery_limits')
   msg_data_enc_Battery_limits = db.encode_message('Battery_limits', msg_data_Battery_limits)
@@ -373,11 +421,11 @@ msg_data_Battery_actual_values_UIt = {
   'Battery_voltage' : 0}
 
 # this gets overwritten in the oscialltion function
-msg_data_Battery_limits = {
- 'Battery_discharge_current_limit' : 60,
- 'Battery_charge_current_limit' : 59,
- 'Battery_charge_voltage' : 56,
- 'Battery_discharge_voltage' : 51 }
+#msg_data_Battery_limits = {
+# 'Battery_discharge_current_limit' : 60,
+# 'Battery_charge_current_limit' : 59,
+# 'Battery_charge_voltage' : 56,
+## 'Battery_discharge_voltage' : 51 }
 
 msg_data_Battery_Error_Warnings = {
  'Module_numbers' : 16,
@@ -420,7 +468,7 @@ msg_data_enc_Battery_Manufacturer = b'\x50\x59\x4c\x4f\x4e\x00\x00\x00'
 
 msg_data_enc_Battery_Request = db.encode_message('Battery_Request', msg_data_Battery_Request)
 msg_data_enc_Battery_actual_values_UIt = db.encode_message('Battery_actual_values_UIt', msg_data_Battery_actual_values_UIt)
-msg_data_enc_Battery_limits = db.encode_message('Battery_limits', msg_data_Battery_limits)
+#msg_data_enc_Battery_limits = db.encode_message('Battery_limits', msg_data_Battery_limits)
 msg_data_enc_Battery_Error_Warnings = db.encode_message('Battery_Error_Warnings', msg_data_Battery_Error_Warnings)
 
 msg_tx_Network_alive_msg = can.Message(arbitration_id=Network_alive_msg.frame_id, data=msg_data_enc_Network_alive_msg, is_extended_id=False)
@@ -428,7 +476,7 @@ msg_tx_Battery_SoC_SoH = can.Message(arbitration_id=Battery_SoC_SoH.frame_id, da
 msg_tx_Battery_Manufacturer = can.Message(arbitration_id=Battery_Manufacturer.frame_id, data=msg_data_enc_Battery_Manufacturer, is_extended_id=False)
 msg_tx_Battery_Request = can.Message(arbitration_id=Battery_Request.frame_id, data=msg_data_enc_Battery_Request, is_extended_id=False)
 msg_tx_Battery_actual_values_UIt = can.Message(arbitration_id=Battery_actual_values_UIt.frame_id, data=msg_data_enc_Battery_actual_values_UIt, is_extended_id=False)
-msg_tx_Battery_limits = can.Message(arbitration_id=Battery_limits.frame_id, data=msg_data_enc_Battery_limits, is_extended_id=False)
+#msg_tx_Battery_limits = can.Message(arbitration_id=Battery_limits.frame_id, data=msg_data_enc_Battery_limits, is_extended_id=False)
 msg_tx_Battery_Error_Warnings = can.Message(arbitration_id=Battery_Error_Warnings.frame_id, data=msg_data_enc_Battery_Error_Warnings, is_extended_id=False)
 
 
@@ -476,7 +524,7 @@ def test_periodic_send_with_modifying_data(bus):
         print ("----------", file=my_file)
         my_file.flush()
         size=os.path.getsize(filename)
-        if size>1000000:
+        if size>30 * 1000* 1000:
           my_file.truncate(0)
           my_file.flush()
 
