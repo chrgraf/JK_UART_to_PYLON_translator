@@ -65,9 +65,10 @@ Battery_charge_current_limit_default   = 60
 Battery_charge_current_limit = Battery_charge_current_limit_default
 Battery_discharge_current_limit = Battery_discharge_current_limit_default
 
-timestamp_discharge_limit_change = time.time() 
-timestamp_charge_limit_change = time.time() 
-
+timestamp_discharge_limit_change = 0.0
+timestamp_charge_limit_change = 0.0
+timestamp_min_volt_last_monomer_run = 0.0
+max_volt_last_monomer_run = 0.0
 
 def byteArrayToHEX(byte_array):
     hex_string = ""
@@ -78,8 +79,43 @@ def byteArrayToHEX(byte_array):
     return hex_string
 
 
+def set_discharge_limit(min_volt,last_discharge_limit):
+  global timestamp_discharge_limit_change, timestamp_min_volt_last_monomer_run
+  run_interval = 5
+  now=time.time()
+  discharge_limit=last_discharge_limit
+  # run this only for each monomer_run_interval interval
+  if ( now - run_interval > timestamp_min_volt_last_monomer_run ):   #wait monomer_run_interval
+        timestamp_min_volt_last_monomer_run = now
+        print("entering the min_max_monomer check")
+        
+        # setting the discharge limit
+        ##############################
+        DIS=60
+        # min_volt set the limit
+        if (min_volt>=3.25):
+             DIS = 60
+        elif (min_volt>=3.15):
+             DIS = 30
+        elif (min_volt<=3.05):
+             DIS = 0
+        
+        # making the discharge-limit smaller is always ok
+        if (DIS<last_discharge_limit):
+             discharge_limit=DIS
+             timestamp_discharge_limit_change=now
+        # in case the derived discharge-limit is higher then previuos, lets wait an our to allow increasing the discharge
+        elif (now - 3600 > timestamp_discharge_limit_change ):
+             discharge_limit=DIS
+             timestamp_discharge_limit_change=now
+        print ("debug set_discharge_limit: ", discharge_limit)
+        
+  return(discharge_limit)
+    
+   
+
 def control_loop (min_volt, max_volt, current,actual_time):
-  global current_ringbuffer, current_max_size, mqtt_client, last_mqtt_run, last_monomer_run, last_osci_run, Battery_charge_current_limit, Battery_discharge_current_limit, msg_data_Battery_limits, timestamp_discharge_limit_change, timestamp_charge_limit_change
+  global current_ringbuffer, current_max_size, mqtt_client, last_mqtt_run, last_monomer_run, last_osci_run, Battery_charge_current_limit, Battery_discharge_current_limit, msg_data_Battery_limits, timestamp_discharge_limit_change, timestamp_charge_limit_change,timestamp_min_volt_last_monomer_run
 
   oscillation_run_interval = 10
   monomer_run_interval = 5
@@ -95,30 +131,9 @@ def control_loop (min_volt, max_volt, current,actual_time):
   current_max=current_ringbuffer.max()
   current_min=current_ringbuffer.min()
 
+  Battery_discharge_current_limit = set_discharge_limit(min_volt,Battery_discharge_current_limit)
   # run this only for each monomer_run_interval interval
   if (actual_time - monomer_run_interval > last_monomer_run ):   #wait monomer_run_interval
-        last_monomer_run = actual_time
-        print("entering the min_max_monomer check")
-        
-        # setting the discharge limit
-        ##############################
-        DIS=60
-        # min_volt set the limit
-        if (min_volt>=3.25):
-             DIS = 60
-        elif (min_volt>=3.15):
-             DIS = 30
-        elif (min_volt<=3.05):
-             DIS = 0
-        
-        # making the discharge-limit smaller is always ok
-        if (DIS<Battery_discharge_current_limit):
-             Battery_discharge_current_limit=DIS
-             timestamp_discharge_limit_change=actual_time
-        # in case the derived discharge-limit is higher then previuos, lets wait an our to allow increasing the discharge
-        elif (actual_time - 3600 > timestamp_discharge_limit_change ):
-             Battery_discharge_current_limit=DIS
-        print ("debug: ", Battery_discharge_current_limit)
 
 
         # setting the charge limit
