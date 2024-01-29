@@ -76,6 +76,9 @@ def print_debug (s,v):
       s=s+" "
    s=s+":"
    print(s,v)
+   if (write_to_file):
+             print (s,v,file=my_file)
+       
 
 def set_discharge_limit(min_volt,last_discharge_limit, timestamp_discharge_limit_change, timestamp_min_volt_last_monomer_run):
   run_interval = 5
@@ -111,10 +114,8 @@ def set_discharge_limit(min_volt,last_discharge_limit, timestamp_discharge_limit
     
    
 def set_charge_limit(max_volt,Battery_charge_current_limit,timestamp_charge_limit_change):
-  run_interval = 5
   now=time.time()
   c_limit=Battery_charge_current_limit
-  # run this only for each monomer_run_interval interval
   if (True):
         # setting the charge limit
         ##############################
@@ -139,6 +140,7 @@ def set_charge_limit(max_volt,Battery_charge_current_limit,timestamp_charge_limi
   elif (now - 3600 > timestamp_charge_limit_change ):
              Battery_charge_current_limit=c_limit
              timestamp_charge_limit_change = now
+             print_debug("allowing to increase charge_limit, 3600seconds passed by","")
   print_debug ("result set_charge_limit", Battery_charge_current_limit)
   return(Battery_charge_current_limit,timestamp_charge_limit_change)
 
@@ -174,10 +176,9 @@ def check_osciallation(max_volt,Battery_charge_current_limit,timestamp_charge_li
                  if (Battery_charge_current_limit>Battery_charge_current_limit_default):
                       Battery_charge_current_limit=Battery_charge_current_limit_default
 
-             if (write_to_file):
-                    print ("oscillation state              : ", oscillation,file=my_file)
-                    print ("Charge_limit after osci_run    : ", Battery_charge_current_limit, file=my_file)
-                    print (current_ringbuffer.get(), file=my_file)
+             print_debug ("oscillation state", oscillation)
+             print_debug ("Charge_limit after osci_run", Battery_charge_current_limit)
+             print_debug (current_ringbuffer.get(),"")
 
              topic="jk_pylon/oscillation_state"
              if (oscillation):
@@ -280,7 +281,7 @@ def readBMS():
                         dataStr  = f"JK_BMS{valName} {voltage}"
                         #print(dataStr, file=fileObj)
                         # print(dataStr)
-                    print (volt_array.get())
+                    print_debug (str(volt_array.get()),"")
                     max_monomer=volt_array.max()
                     min_monomer=volt_array.min()
                     print_debug("Min Monomer", min_monomer)
@@ -342,11 +343,6 @@ def readBMS():
                        capacity=unmodified_capacity
                     print_debug("final SOC", capacity)
 
-                    if (write_to_file):
-                       print ("unmodified SOC                 : ", unmodified_capacity,file=my_file)
-                       print ("final SOC                      : ", capacity,file=my_file)
-                       # my_file.flush()    # do int once  
-                    
   
  
         bms.reset_input_buffer()    
@@ -495,11 +491,9 @@ def test_periodic_send_with_modifying_data(bus):
       print ("")
       print_debug("updating data", Alive_packet )
       msg_tx_Network_alive_msg.data = db.encode_message('Network_alive_msg',{'Alive_packet': Alive_packet})
-      msg_tx_Battery_SoC_SoH.data = db.encode_message('Battery_SoC_SoH',{'SoC': my_soc,
+      msg_tx_Battery_SoC_SoH.data = db.encode_message('Battery_SoC_SoH',{'SoC': my_soc, 
         'SoH': 100})
-      if (write_to_file):
-        print ("SOC sent via canbus            : ", my_soc,file=my_file)
-        #my_file.flush()    # do int once  
+      print_debug ("SOC sent via canbus", my_soc)
       msg_tx_Battery_actual_values_UIt.data = db.encode_message('Battery_actual_values_UIt',{
         'Battery_temperature' : my_temp,
         'Battery_current' : my_ampere,
@@ -509,9 +503,6 @@ def test_periodic_send_with_modifying_data(bus):
       task_tx_Network_alive_msg.modify_data(msg_tx_Network_alive_msg)
       task_tx_Battery_SoC_SoH.modify_data(msg_tx_Battery_SoC_SoH)
       task_tx_Battery_actual_values_UIt.modify_data(msg_tx_Battery_actual_values_UIt)
-
-      if (write_to_file):
-         print ("Battery_charge_current_limit before manual overwrite", Battery_charge_current_limit, file=my_file)
 
       # only for debug - hard enforcing a limit 
       #Battery_discharge_current_limit= 10
@@ -533,11 +524,7 @@ def test_periodic_send_with_modifying_data(bus):
       print_debug ("CANBUS: Battery_charge_current_limit", Battery_charge_current_limit)
       print_debug ("CANBUS: Battery_discharge_current_limit", Battery_discharge_current_limit)
       now_date = datetime.datetime.now()
-      if (write_to_file):
-        print ("min_volt, max_volt             : ", min_volt, max_volt,file=my_file)
-        print ("Battery_charge_current_limit   : ", Battery_charge_current_limit,file=my_file)
-        print ("Battery_discharge_current_limit: ", Battery_discharge_current_limit,file=my_file)
-        print ("Date                           : ", now_date, file=my_file)
+      print_debug ("Date", now_date)
     
      
       msg_data_Battery_limits = {
@@ -546,9 +533,7 @@ def test_periodic_send_with_modifying_data(bus):
          'Battery_charge_voltage' : Battery_charge_voltage_default,
          'Battery_discharge_voltage' : Battery_discharge_voltage_default }
 
-      if (write_to_file):
-        print (msg_data_Battery_limits,file=my_file)
-      print (msg_data_Battery_limits)
+      print_debug ("canbus data for sending", msg_data_Battery_limits)
     
       Battery_limits = db.get_message_by_name('Battery_limits')
       msg_data_enc_Battery_limits = db.encode_message('Battery_limits', msg_data_Battery_limits)
@@ -559,8 +544,6 @@ def test_periodic_send_with_modifying_data(bus):
       if Alive_packet >= 4611686018427387904:
         Alive_packet = 2
       if (write_to_file):
-        print ("", file=my_file)
-        print ("----------", file=my_file)
         my_file.flush()
         size=os.path.getsize(filename)
         if size>30 * 1000* 1000:
