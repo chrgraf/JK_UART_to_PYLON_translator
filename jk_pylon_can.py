@@ -58,9 +58,6 @@ sleepTime = 1
 
 
 
-
-max_volt_last_monomer_run = 0.0
-
 def byteArrayToHEX(byte_array):
     hex_string = ""
     for cmd_byte in byte_array:
@@ -70,7 +67,7 @@ def byteArrayToHEX(byte_array):
     return hex_string
 
 def print_debug (s,v):
-   total=40
+   total=45
    l=len(s)
    for x in range (0,total - l):
       s=s+" "
@@ -80,37 +77,32 @@ def print_debug (s,v):
              print (s,v,file=my_file)
        
 
-def set_discharge_limit(min_volt,last_discharge_limit, timestamp_discharge_limit_change, timestamp_min_volt_last_monomer_run):
-  run_interval = 5
+def set_discharge_limit(min_volt,last_discharge_limit,timestamp_discharge_limit_change):
   now=time.time()
   discharge_limit=last_discharge_limit
-  # run this only for each monomer_run_interval interval
-  if ( now - run_interval > timestamp_min_volt_last_monomer_run ):   #wait monomer_run_interval
-        timestamp_min_volt_last_monomer_run = now
-        print("entering the min_max_monomer check")
-        
+  print_debug ("discharge_limit when entering set_discharge",last_discharge_limit)
+  if (True):
         # setting the discharge limit
         ##############################
-        DIS=60
         # min_volt set the limit
         if (min_volt>=3.25):
              DIS = 60
-        elif (min_volt>=3.15):
+        elif (min_volt>3.05):
              DIS = 30
         elif (min_volt<=3.05):
              DIS = 0
         
         # making the discharge-limit smaller is always ok
-        if (DIS<last_discharge_limit):
+        if (DIS<=last_discharge_limit):
              discharge_limit=DIS
              timestamp_discharge_limit_change=now
         # in case the derived discharge-limit is higher then previuos, lets wait an our to allow increasing the discharge
         elif (now - 3600 > timestamp_discharge_limit_change ):
              discharge_limit=DIS
              timestamp_discharge_limit_change=now
-        print ("debug set_discharge_limit: ", discharge_limit)
-        
-  return(discharge_limit,timestamp_discharge_limit_change, timestamp_min_volt_last_monomer_run)
+  
+  print_debug ("discharge_limit when leaving set_discharge",discharge_limit)
+  return(discharge_limit,timestamp_discharge_limit_change)
     
    
 def set_charge_limit(max_volt,Battery_charge_current_limit,timestamp_charge_limit_change):
@@ -378,11 +370,11 @@ msg_data_Battery_actual_values_UIt = {
   'Battery_voltage' : 0}
 
 # this gets overwritten in the oscialltion function
-#msg_data_Battery_limits = {
-# 'Battery_discharge_current_limit' : 60,
-# 'Battery_charge_current_limit' : 59,
-# 'Battery_charge_voltage' : 56,
-## 'Battery_discharge_voltage' : 51 }
+msg_data_Battery_limits = {
+ 'Battery_discharge_current_limit' : 60,
+ 'Battery_charge_current_limit' : 60,
+ 'Battery_charge_voltage' : 56,
+ 'Battery_discharge_voltage' : 51 }
 
 msg_data_Battery_Error_Warnings = {
  'Module_numbers' : 16,
@@ -425,7 +417,7 @@ msg_data_enc_Battery_Manufacturer = b'\x50\x59\x4c\x4f\x4e\x00\x00\x00'
 
 msg_data_enc_Battery_Request = db.encode_message('Battery_Request', msg_data_Battery_Request)
 msg_data_enc_Battery_actual_values_UIt = db.encode_message('Battery_actual_values_UIt', msg_data_Battery_actual_values_UIt)
-#msg_data_enc_Battery_limits = db.encode_message('Battery_limits', msg_data_Battery_limits)
+msg_data_enc_Battery_limits = db.encode_message('Battery_limits', msg_data_Battery_limits)
 msg_data_enc_Battery_Error_Warnings = db.encode_message('Battery_Error_Warnings', msg_data_Battery_Error_Warnings)
 
 msg_tx_Network_alive_msg = can.Message(arbitration_id=Network_alive_msg.frame_id, data=msg_data_enc_Network_alive_msg, is_extended_id=False)
@@ -433,7 +425,7 @@ msg_tx_Battery_SoC_SoH = can.Message(arbitration_id=Battery_SoC_SoH.frame_id, da
 msg_tx_Battery_Manufacturer = can.Message(arbitration_id=Battery_Manufacturer.frame_id, data=msg_data_enc_Battery_Manufacturer, is_extended_id=False)
 msg_tx_Battery_Request = can.Message(arbitration_id=Battery_Request.frame_id, data=msg_data_enc_Battery_Request, is_extended_id=False)
 msg_tx_Battery_actual_values_UIt = can.Message(arbitration_id=Battery_actual_values_UIt.frame_id, data=msg_data_enc_Battery_actual_values_UIt, is_extended_id=False)
-#msg_tx_Battery_limits = can.Message(arbitration_id=Battery_limits.frame_id, data=msg_data_enc_Battery_limits, is_extended_id=False)
+msg_tx_Battery_limits = can.Message(arbitration_id=Battery_limits.frame_id, data=msg_data_enc_Battery_limits, is_extended_id=False)
 msg_tx_Battery_Error_Warnings = can.Message(arbitration_id=Battery_Error_Warnings.frame_id, data=msg_data_enc_Battery_Error_Warnings, is_extended_id=False)
 
 
@@ -447,7 +439,6 @@ def test_periodic_send_with_modifying_data(bus):
     Battery_discharge_current_limit = Battery_discharge_current_limit_default
     timestamp_discharge_limit_change = 0.0
     timestamp_charge_limit_change = 0.0
-    timestamp_min_volt_last_monomer_run = 0.0
     timestamp_charge_limit_change_osci = 0.0
     timestamp_last_osci_run = 0.0
     current_max_size=60                                  # elements in ringbuffer
@@ -463,7 +454,7 @@ def test_periodic_send_with_modifying_data(bus):
     task_tx_Battery_Request = bus.send_periodic(msg_tx_Battery_Request, 1)
     task_tx_Battery_actual_values_UIt = bus.send_periodic(msg_tx_Battery_actual_values_UIt, 1)
     # sending init values only. modified by function test_periodic_send_with_modifying_data
-    #task_tx_Battery_limits = bus.send_periodic(msg_tx_Battery_limits, 1)
+    task_tx_Battery_limits = bus.send_periodic(msg_tx_Battery_limits, 1)
     task_tx_Battery_Error_Warnings = bus.send_periodic(msg_tx_Battery_Error_Warnings, 1)
     time.sleep(0.5)
 #    if not isinstance(task, can.ModifiableCyclicTaskABC):
@@ -476,8 +467,7 @@ def test_periodic_send_with_modifying_data(bus):
 
       # undervolt protection
       #####################
-      Battery_discharge_current_limit,timestamp_discharge_limit_change, timestamp_min_volt_last_monomer_run = set_discharge_limit(min_volt,Battery_discharge_current_limit,timestamp_discharge_limit_change, timestamp_min_volt_last_monomer_run)
-      #print ("Debug xxxx", Battery_discharge_current_limit)
+      Battery_discharge_current_limit,timestamp_discharge_limit_change=set_discharge_limit(min_volt,Battery_discharge_current_limit,timestamp_discharge_limit_change)
 
       # overvolt protection
       #####################
@@ -490,6 +480,7 @@ def test_periodic_send_with_modifying_data(bus):
       Alive_packet = Alive_packet+1
       print ("")
       print_debug("updating data", Alive_packet )
+      print_debug("-------------", "")
       msg_tx_Network_alive_msg.data = db.encode_message('Network_alive_msg',{'Alive_packet': Alive_packet})
       msg_tx_Battery_SoC_SoH.data = db.encode_message('Battery_SoC_SoH',{'SoC': my_soc, 
         'SoH': 100})
@@ -507,10 +498,11 @@ def test_periodic_send_with_modifying_data(bus):
       # only for debug - hard enforcing a limit 
       #Battery_discharge_current_limit= 10
       #Battery_charge_current_limit= 2
+      print_debug ("xxx Battery_discharge_current_limit", Battery_discharge_current_limit)
+      print_debug ("xxx Battery_charge_current_limit", Battery_charge_current_limit)
     
       print_debug("next mqtt sent in seconds",int(mqtt_sent_interval - (now - last_mqtt_run)))
       if (now - mqtt_sent_interval   > last_mqtt_run ):        #wait 20seconds before publish next mqtt
-          print (">>>>>>>>>>>>>>>>>>>>>>")
           last_mqtt_run=now
           topic="jk_pylon/Battery_charge_current_limit"
           message=str(Battery_charge_current_limit)
@@ -527,18 +519,19 @@ def test_periodic_send_with_modifying_data(bus):
       print_debug ("Date", now_date)
     
      
-      msg_data_Battery_limits = {
+      msg_tx_Battery_limits.data = db.encode_message('Battery_limits',{
          'Battery_discharge_current_limit' : Battery_discharge_current_limit,
          'Battery_charge_current_limit' : Battery_charge_current_limit,
          'Battery_charge_voltage' : Battery_charge_voltage_default,
-         'Battery_discharge_voltage' : Battery_discharge_voltage_default }
+         'Battery_discharge_voltage' : Battery_discharge_voltage_default })
 
-      print_debug ("canbus data for sending", msg_data_Battery_limits)
+      #print_debug ("canbus data for sending", msg_tx_Battery_limits.data)
     
-      Battery_limits = db.get_message_by_name('Battery_limits')
-      msg_data_enc_Battery_limits = db.encode_message('Battery_limits', msg_data_Battery_limits)
-      msg_tx_Battery_limits = can.Message(arbitration_id=Battery_limits.frame_id, data=msg_data_enc_Battery_limits, is_extended_id=False)
-      task_tx_Battery_limits = bus.send_periodic(msg_tx_Battery_limits, 1)
+      #Battery_limits = db.get_message_by_name('Battery_limits')
+      #msg_data_enc_Battery_limits = db.encode_message('Battery_limits', msg_data_Battery_limits)
+      #msg_tx_Battery_limits = can.Message(arbitration_id=Battery_limits.frame_id, data=msg_data_enc_Battery_limits, is_extended_id=False)
+      #task_tx_Battery_limits= bus.send_periodic(msg_tx_Battery_limits, 1)
+      task_tx_Battery_limits.modify_data (msg_tx_Battery_limits)
     
 
       if Alive_packet >= 4611686018427387904:
@@ -552,7 +545,7 @@ def test_periodic_send_with_modifying_data(bus):
 
       time.sleep(sleepTime)
 
-      print ("----------------------")
+      print_debug ("----------------------","")
     task.stop()
     print("done")
 
