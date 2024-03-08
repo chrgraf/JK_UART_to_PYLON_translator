@@ -45,14 +45,23 @@ import my_mqtt
 # self written ringbuffer
 from my_basic_ringbuf import myRingBuffer 
 
+# ringbuffer
+from queue import Queue
+import json
+
 # logfile
-write_to_file = True               # turn only on for debug. no upper size limit of the logfile!
+write_to_file = True               # turn only on for debug. 
+logfile_size = 30                  # size im MB, afterwards its reset to zero
+log_to_console = False
 #filename="./jk_python_can.log"
 filename="/mnt/ramdisk/jk_pylon.log"
 
 # oscillation
-last_osci_run = 0
-last_monomer_run = 0
+oscillation_detection=True          # requires SMA smartmeter
+last_osci_run = 0.0
+last_monomer_run = 0.0
+my_mqtt.meter=Queue()
+
 
 sleepTime = 1
 
@@ -72,83 +81,112 @@ def print_debug (s,v):
    for x in range (0,total - l):
       s=s+" "
    s=s+":"
-   print(s,v)
+   if (log_to_console):
+       print(s,v)
    if (write_to_file):
-             print (s,v,file=my_file)
+       print (s,v,file=my_file)
        
 
-def set_discharge_limit(min_volt,last_discharge_limit,timestamp_discharge_limit_change):
+def set_discharge_limit(min_volt,Battery_discharge_current_limit,timestamp_discharge_limit_change):
   now=time.time()
-  discharge_limit=last_discharge_limit
-  print_debug ("discharge_limit when entering set_discharge",last_discharge_limit)
-  if (True):
-        # setting the discharge limit
-        ##############################
-        # min_volt set the limit
-        if (min_volt>=3.25):
-             DIS = 60
-        elif (min_volt>3.05):
-             DIS = 30
-        elif (min_volt<=3.05):
-             DIS = 0
-        
-        # making the discharge-limit smaller is always ok
-        if (DIS<=last_discharge_limit):
-             discharge_limit=DIS
-             timestamp_discharge_limit_change=now
+  discharge_limit=Battery_discharge_current_limit
+  print_debug ("discharge_limit when entering set_discharge",Battery_discharge_current_limit)
+
+  mylist=[[3.15,0],[3.25,30],[3.60,60]]
+  for i in range(len(mylist)):
+     if (min_volt<=mylist[i][0]):
+           discharge_limit=mylist[i][1]
+           break
+  print_debug ("now", now)
+  print_debug ("timestamp_discharge_limit_change", timestamp_discharge_limit_change)
+ 
+  # making the discharge-limit smaller is always ok
+  if (discharge_limit<Battery_discharge_current_limit):
+        Battery_discharge_current_limit=discharge_limit
         # in case the derived discharge-limit is higher then previuos, lets wait an our to allow increasing the discharge
-        elif (now - 3600 > timestamp_discharge_limit_change ):
-             discharge_limit=DIS
-             timestamp_discharge_limit_change=now
-  
-  print_debug ("discharge_limit when leaving set_discharge",discharge_limit)
-  return(discharge_limit,timestamp_discharge_limit_change)
-    
+   
+  elif (now - 7200 > timestamp_discharge_limit_change ):
+         print_debug (">>>", "entering now - 7200")
+         for i in range(len(mylist)):
+                if (mylist[i][1]>Battery_discharge_current_limit):
+                      print_debug(">>> allowing to increase discharge_limit, 7200 seconds passed by","")
+                      Battery_discharge_current_limit=mylist[i][1]
+                      timestamp_discharge_limit_change = now
+                      break
+
+  print_debug ("result set_discharge_limit", Battery_discharge_current_limit)
+  return(Battery_discharge_current_limit,timestamp_discharge_limit_change)
+
+ 
    
 def set_charge_limit(max_volt,Battery_charge_current_limit,timestamp_charge_limit_change):
   now=time.time()
   c_limit=Battery_charge_current_limit
-  if (True):
-        # setting the charge limit
-        ##############################
-        # max_volt the limit
-        if (max_volt>=3.60):
-              c_limit= 0
-        elif (max_volt>=3.55):
-              c_limit= 0
-        elif (max_volt>=3.48):
-              c_limit= 0
-        elif (max_volt>=3.45):
-              c_limit= 20
-        #elif (max_volt>=3.342):
-        #      c_limit= 0
-        #elif (max_volt>=3.33):
-        #      c_limit= 20
+  mylist=[[3.60,0],[3.55,0],[3.48,0],[3.45,15],[3.42,20],[3.2,60]]
+  for i in range(len(mylist)):
+     if (max_volt>=mylist[i][0]):
+           c_limit=mylist[i][1]
+           break
 
   # making the charge-limit smaller is always ok
   if (c_limit<Battery_charge_current_limit):
              Battery_charge_current_limit=c_limit
   # in case the derived charge-limit is higher then previuos, lets wait an our to allow increasing the charge
-  elif (now - 3600 > timestamp_charge_limit_change ):
-             Battery_charge_current_limit=c_limit
-             timestamp_charge_limit_change = now
-             print_debug("allowing to increase charge_limit, 3600seconds passed by","")
+  elif (now - 7200 > timestamp_charge_limit_change ):
+             for i in range(len(mylist)):
+                #print(mylist[i][1])
+                if (mylist[i][1]>Battery_charge_current_limit):
+                      Battery_charge_current_limit=mylist[i][1]
+                      timestamp_charge_limit_change = now
+                      print_debug("allowing to increase charge_limit, 7200 seconds passed by","")
+                      break
+
   print_debug ("result set_charge_limit", Battery_charge_current_limit)
   return(Battery_charge_current_limit,timestamp_charge_limit_change)
 
+def check_oscillation (meter,meter_ringbuffer):
+ print ("size_main", meter.qsize())
+ while not meter.empty():
+    my_message=meter.get()
+    if my_message is None:
+        continue
+    y=json.loads(my_message)
+    pconsume=y['pconsume']
+    print("pconsume", pconsume)
+    psupply=y['psupply']
+    print("psupply", psupply)
+    add=False
+    if (pconsume>0):
+        value=-pconsume
+        add=True
+    if (psupply>0):
+        value=psupply
+        add=True
+    if (add):
+         meter_ringbuffer.append(value)
 
 
+ average=meter_ringbuffer.average()
+ max=meter_ringbuffer.max()
+ min=meter_ringbuffer.min()
+ print (average, max,min)
+
+ return(meter_ringbuffer)
+
+
+
+  
 def check_osciallation(max_volt,Battery_charge_current_limit,timestamp_charge_limit_change_osci, timestamp_last_osci_run, current_ringbuffer,current, Battery_charge_current_limit_default):
          volt_range_allow_osci_detect=3.4
          oscillation=False
          oscillation_run_interval=10
          now=time.time()
          current_max_deviation_list = [12, 5, 3]
-         print ("Debug_oscillation1", Battery_charge_current_limit)
+         #print ("Debug_oscillation1", Battery_charge_current_limit)
      
          # add actual ampere towards the ringbuffer
          current_ringbuffer.append(current)
-         print ("current_ringbuffer", current_ringbuffer.get())
+         #print ("current_ringbuffer", current_ringbuffer.get())
          average=current_ringbuffer.average()
          current_max=current_ringbuffer.max()
          current_min=current_ringbuffer.min()
@@ -180,7 +218,7 @@ def check_osciallation(max_volt,Battery_charge_current_limit,timestamp_charge_li
              else:
                 message="0"
              my_mqtt.publish(mqtt_client,topic,message)
-         print ("Debug_oscillation", Battery_charge_current_limit)
+         #print ("Debug_oscillation", Battery_charge_current_limit)
          return(Battery_charge_current_limit,timestamp_charge_limit_change_osci,timestamp_last_osci_run, current_ringbuffer)
 
 
@@ -261,7 +299,7 @@ def readBMS():
                 
                     # We can use this number to determine the total amount of cells we have
                     cellcount = int(bytecount/3)                
-                    print_debug("cellcount=",cellcount)
+                    print_debug("cellcount",cellcount)
 
                     # Voltages start at index 2, in groups of 3
                     volt_array = myRingBuffer(cellcount)
@@ -443,11 +481,12 @@ def test_periodic_send_with_modifying_data(bus):
     timestamp_last_osci_run = 0.0
     current_max_size=60                                  # elements in ringbuffer
     current_ringbuffer=myRingBuffer(current_max_size)    # init/flush the ringbuffer
+    meter_ringbuffer=myRingBuffer(current_max_size)    # init/flush the ringbuffer
     Battery_charge_voltage_default         = 56
     Battery_discharge_voltage_default      = 51
 
     Alive_packet = 0 #counter
-    print("Starting to send a message every 1s")
+    #print("Starting to send a message every 1s")
     task_tx_Network_alive_msg = bus.send_periodic(msg_tx_Network_alive_msg, 1)
     task_tx_Battery_SoC_SoH = bus.send_periodic(msg_tx_Battery_SoC_SoH, 1)
     task_tx_Battery_Manufacturer = bus.send_periodic(msg_tx_Battery_Manufacturer, 1)
@@ -476,9 +515,10 @@ def test_periodic_send_with_modifying_data(bus):
       # osciallation detection
       ########################
       #Battery_charge_current_limit,timestamp_charge_limit_change_osci, timestamp_last_osci_run, current_ringbuffer = check_osciallation(max_volt,Battery_charge_current_limit,timestamp_charge_limit_change_osci, timestamp_last_osci_run, current_ringbuffer, current,Battery_charge_current_limit_default)
+      if (oscillation_detection):
+             meter_ringbuffer=check_oscillation(my_mqtt.meter,meter_ringbuffer)
 
       Alive_packet = Alive_packet+1
-      print ("")
       print_debug("updating data", Alive_packet )
       print_debug("-------------", "")
       msg_tx_Network_alive_msg.data = db.encode_message('Network_alive_msg',{'Alive_packet': Alive_packet})
@@ -539,7 +579,7 @@ def test_periodic_send_with_modifying_data(bus):
       if (write_to_file):
         my_file.flush()
         size=os.path.getsize(filename)
-        if size>30 * 1000* 1000:
+        if size> logfile_size * 1000* 1000:
           my_file.truncate(0)
           my_file.flush()
 
@@ -547,14 +587,18 @@ def test_periodic_send_with_modifying_data(bus):
 
       print_debug ("----------------------","")
     task.stop()
-    print("done")
 
 
 if __name__ == "__main__":
     if (write_to_file):
        my_file=open(filename,'w')
+       print ("Logging to file:",filename)
+    if (not log_to_console):
+       print("logging to console is disabled")
+       print(" -enable logging to console  by setting variable log_to_console=True")
     mqtt_client=my_mqtt.connect_mqtt()
     mqtt_client.loop_start()
+    mqtt_client.subscribe("SMA-EM/status/1900203015")
 
     reset_msg = can.Message(arbitration_id=0x00, data=[0, 0, 0, 0, 0, 0], is_extended_id=False)
 
@@ -563,7 +607,7 @@ if __name__ == "__main__":
         ('socketcan', 'can0' ),
         #('ixxat', 0)
     ]:
-        print("Carrying out cyclic tests with {} interface".format(interface))
+        #print("Carrying out cyclic tests with {} interface".format(interface))
         bus = can.Bus(interface=interface, channel=channel, bitrate=500000)
         test_periodic_send_with_modifying_data(bus)
         bus.shutdown()

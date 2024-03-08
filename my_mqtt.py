@@ -24,6 +24,7 @@ def connect_mqtt():
     client.username_pw_set(username, password)
     client.on_connect = on_connect
     client.connect(broker, port)
+    client.on_message=on_message #attach function to callback
     return client
 
 
@@ -31,16 +32,28 @@ def publish(client,topic,message):
         result = client.publish(topic, message)
         # result: [0, 1]
         status = result[0]
-        if status == 0:
-            print(f"Send `{message}` to topic `{topic}`")
-        else:
-            print(f"Failed to send message to topic {topic}")
+        #if status == 0:
+        #    print(f"Send `{message}` to topic `{topic}`")
+        #else:
+        #    print(f"Failed to send message to topic {topic}")
 
+def subscribe(client, topic):
+    client.subscribe(client, topic)
+
+def on_message(client, userdata, message):
+    global meter
+    decode=str(message.payload.decode("utf-8"))
+    #print("message received " ,str(message.payload.decode("utf-8")))
+    #print("message topic=",message.topic)
+    #print("message qos=",message.qos)
+    #print("message retain flag=",message.retain)
+    meter.put(decode)
 
 def run():
     client = connect_mqtt()
     client.loop_start()
-    publish(client)
+    client.subscribe("solis/Battery_Power_W")
+    #publish(client)
 
 
 if __name__ == '__main__':
