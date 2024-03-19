@@ -7,6 +7,15 @@ Script  has trivial control-loop to control actual current for charging and disc
 Same holds true for the weakest cell. Depending on weakest cell voltage, allowed current-draw gets limited and finally adjusted to zero t protect the lowest cell against over-discharge.
 
 
+# major updates
+* added MQTT send/receive
+* Goodwe added
+    * mine very unusual setup inclides a Goodwe EM3648 as well. As I need to avoid that e.g. Goodwe discharges to allow the Solis to charge, I added major control-loops.
+    * Important on the Goodwe: Goodwe can be removed from the picture by setting the variable  Sems_Flag = False
+    * actyally reading the goodwe via HPPS from Sems-Portal. Not ideal. Further work done to read directly via TCP
+- added a python-script to candump all messages in human readable format (can_debug.py)
+  
+
 Dear all,
 
 project is in an very early stage.
@@ -15,14 +24,19 @@ General speaking this script is massively using below repos from PurpleAlien and
 
 # Disclaimer
 Initial tests shows it working. Use at own risk. The author is not taking any responsibility for any damage or issue resulting by making use of this project.
+I am still elaborating if RPI2 is good enough to get the job done. Actually working on a RPI5 which for sure is very much overpowered.
 
 # credits
-Full credits go to:
-1) Juamiso, who developed the CAN-BUS Part
-https://github.com/juamiso/PYLON_EMU
+credits go to:
 
-2) PurpleAlien, who developed the JK-UART script
-https://github.com/PurpleAlien/jk-bms_grafana
+* Juamiso, who developed the CAN-BUS Part
+    * https://github.com/juamiso/PYLON_EMU
+* PurpleAlien, who developed the JK-UART script
+    * https://github.com/PurpleAlien/jk-bms_grafana
+* Prasath Premapalan for the can-decoding script
+    * https://stackoverflow.com/users/12183162/prasath-premapalan
+    * https://stackoverflow.com/questions/58306438/how-to-decode-message-from-a-canbus-iptronik
+
 
 Tested
 =======
