@@ -53,6 +53,8 @@ Solis inverter: RAI-3K-48ES-5G
 - Test Sems-Portal via: sems.py script.
 - details at https://github.com/chrgraf/Goodwe_Sems_Portal_Python_Query
 
+- Note: of course the goodwe part can be fully disabled, as the purpose of this repo is Solis/JK-BMS/Pylon
+
 ```
 behn@rpi5:~/jk_venv $ ./sems.py
 Success
