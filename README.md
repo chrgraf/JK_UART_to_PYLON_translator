@@ -46,13 +46,64 @@ JK BMS        : JK Smart Active Balance BMS BD6A20S10P
 Solis inverter: RAI-3K-48ES-5G
 ```
 
+# testing Basic function blocks first
+## Goodwe
+- Mine setup includes both a solis and a goodwe. I need to avoid that Solis e.g. discharges to allow the goodwe charging.
+- actually Goodwe gets queried via HTTP Sems-Port. Suboptimal.
+- Test Sems-Portal via: sems.py script.
+- details at https://github.com/chrgraf/Goodwe_Sems_Portal_Python_Query
 
+```
+behn@rpi5:~/jk_venv $ ./sems.py
+Success
+```
+
+## checking UART-connection to JK-BMS
+One major comoponent is to read via Serial UART from the BMS. In mine setup the serial adapaper is attached via ttyUSB0.
+Change as required in the my_read_bms.py script:
+```
+behn@rpi5:~/jk_venv $ grep USB0 my_read_bms.py
+      bms = serial.Serial('/dev/ttyUSB0')
+```
+Executing the scrupt shall result in "True"
+```
+behn@rpi5:~/jk_venv $ python my_read_bms.py
+query the BMS
+USB Serial Adpater Setting:  Serial<id=0x7fff528fe3e0, open=True>(port='/dev/ttyUSB0', baudrate=115200, bytesize=8, parity='N', stopbits=1, timeout=0.2, xonxoff=False, rtscts=False, dsrdtr=False)
+Status reading the BMS:  True
+return values: [56, 52.28, -12.2, 23.0, 3.266, 3.27, -12.2, True]
+
+```
+
+## canbus
+If canbus all does fine, then the canbus dump-tool shall print something like this here
+
+```
+behn@rpi5:~/jk_venv $ ./can_debug.py
+[message('Network_alive_msg', 0x305, False, 8, None), message('Battery_Manufacturer', 0x35e, False, 8, None), message('Battery_Request', 0x35c, False, 2, {None: 'Bit 5 is designed for inverter allows battery to shut down, and able to wake battery up to charge it.Bit 4 is designed for inverter doesn`t want battery to shut down, able to charge battery before shut down to avoid low energy.'}), message('Battery_actual_values_UIt', 0x356, False, 6, None), message('Battery_SoC_SoH', 0x355, False, 4, None), message('Battery_limits', 0x351, False, 8, None), message('Battery_Error_Warnings', 0x359, False, 7, None)]
+{'Alive_packet': 0}
+{'SoC': 56, 'SoH': 100}
+{'Manufaturer_string': 336337852752}
+{'Full_charge_req': 0, 'Force_charge_req_II': 0, 'Force_charge_req_I': 0, 'Discharge_enable': 1, 'Charge_enable': 1}
+{'Battery_voltage': 52.24, 'Battery_current': -14.8, 'Battery_temperature': 23.0}
+{'Battery_charge_voltage': 56.0, 'Battery_charge_current_limit': 0.0, 'Battery_discharge_current_limit': 60.0, 'Battery_discharge_voltage': 51.0}
+{'Overvoltage_ERR': 0, 'Undervoltage_ERR': 0, 'Overtemperature_ERR': 0, 'Undertemperature_ERR': 0, 'Overcurrent_discharge_ERR': 0, 'Charge_overcurrent_ERR': 0, 'System_Error': 0, 'voltage_high_WARN': 0, 'voltage_low_WARN': 0, 'Temperature_high_WARN': 0, 'Temperature_low_WARN': 0, 'Discharge_current_high_WARN': 0, 'Charge_current_high_WARN': 0, 'Internal_Error_WARN': 0, 'Module_numbers': 16}
+{'Alive_packet': 0}
+```
 
 # Install
 
 I will add more info over time.
 But its a good idea to clone https://github.com/juamiso/PYLON_EMU to get hold of the required pylon_CAN_210124.dbc file.
 After having all python libs installed, just execute the script delivered via this repo
+
+```
+behn@rpi5:~/jk_venv $ ./jk_pylon_can.py
+Logging to file: /mnt/ramdisk/jk_pylon.log
+logging to console is disabled
+ -enable logging to console  by setting variable log_to_console=True
+Connected to MQTT Broker!
+```
 
 
 ## making the script autostart as a service
