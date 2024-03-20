@@ -3,15 +3,12 @@ import time
 
 from paho.mqtt import client as mqtt_client
 
-
-broker = '192.168.178.116'
-port = 1883
 # generate client ID with pub prefix randomly
 client_id = f'python-mqtt-{random.randint(0, 1000)}'
 username = ''
 password = ''
 
-def connect_mqtt():
+def connect_mqtt(broker,port):
     def on_connect(client, userdata, flags, rc):
         if rc == 0:
             print("Connected to MQTT Broker!")
@@ -50,7 +47,7 @@ def on_message(client, userdata, message):
 def run():
     client = connect_mqtt()
     client.loop_start()
-    client.subscribe("solis/Battery_Power_W")
+    #client.subscribe("solis/Battery_Power_W")
     #publish(client)
 
 

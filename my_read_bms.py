@@ -158,8 +158,8 @@ def readBMS(bms,q):
                     # SOC/ Remaining capacity, %
                     unmodified_capacity = struct.unpack_from('>B', data, bytecount + 18)[0]
                     print_debug("Debug unmodified capacity", unmodified_capacity)
-                    #allow_larger_100_percent_soc = True
-                    allow_larger_100_percent_soc = False
+                    allow_larger_100_percent_soc = True
+                    #allow_larger_100_percent_soc = False
                     if (unmodified_capacity >=99 and allow_larger_100_percent_soc):
                        capacity=unmodified_capacity-1
                     else:
@@ -195,12 +195,15 @@ if __name__ == "__main__":
 
    # query the BMS
    print("query the BMS")
+   print ("USB Serial Adpater Setting: ",bms)
    q = multiprocessing.Queue()
    x = multiprocessing.Process(target=readBMS,args=(bms,q,))
    x.start()
    x.join()
-   print ("return values", q.get())
-   print ("Status reading the BMS",q[7])
+   result=q.get()
+   success=result[7]
+   print ("Status reading the BMS: ",success)
+   print ("return values:", result)
 
 
    #my_soc,my_volt,my_ampere,my_temp,min_volt, max_volt, current=readBMS()

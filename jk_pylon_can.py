@@ -44,6 +44,7 @@ import multiprocessing
 #mqtt - for logging-purposes we send some stuff to a mqtt-broker.
 # not required to operate this script successful
 import my_mqtt
+import socket
 
 # self written ringbuffer
 from my_basic_ringbuf import myRingBuffer 
@@ -72,6 +73,9 @@ my_mqtt.meter=Queue()
 
 from print_debug import print_debug as print_debug
 from print_debug import log_setup as log_setup
+
+#read SMA power-meter
+import sma_em_capture_package 
 
 
 sleepTime = 1
@@ -144,7 +148,7 @@ def set_charge_limit(max_volt,Battery_charge_current_limit,my_soc,oscillation_go
   print_debug ("result set_charge_limit_", Battery_charge_current_limit)
   return(Battery_charge_current_limit, timestamp_charge_limit_change)
 
-def populate_sma_ringbuffer (meter,meter_ringbuffer):
+def populate_sma_ringbuffer_old (meter,meter_ringbuffer):
     # have in mind, ringbuffer is WATT, not Ampere
  
     limit_min_max=300
@@ -182,6 +186,24 @@ def populate_sma_ringbuffer (meter,meter_ringbuffer):
            oscillation_got_detected=True
     return(oscillation_got_detected,meter_ringbuffer)
 
+def populate_sma_ringbuffer (meter,meter_ringbuffer):
+    # have in mind, ringbuffer is WATT, not Ampere
+ 
+    limit_min_max=300
+    limit_average=300
+    min_event_osci_true=3
+    oscillation_got_detected=False
+    meter_ringbuffer.append(meter)
+    print_debug ("meter ringbuffer average", f"{meter_ringbuffer.average():.0f}")
+    print_debug ("meter ringbuffer min", f"{meter_ringbuffer.min():.0f}")
+    print_debug ("meter ringbuffer max", f"{meter_ringbuffer.max():.0f}")
+    # gt_count counts elements in buffer GreaterThen
+    # lt_count counts elements in buffer LessThen
+
+    if (meter_ringbuffer.gt_count(limit_min_max) > min_event_osci_true and meter_ringbuffer.lt_count(-limit_min_max) > min_event_osci_true):
+       if (meter_ringbuffer.average() < limit_average and meter_ringbuffer.average() > -limit_average):
+           oscillation_got_detected=True
+    return(oscillation_got_detected,meter_ringbuffer)
 
 def populate_solis_current_ringbuffer (current,current_ringbuffer):
          # add actual ampere towards the ringbuffer
@@ -213,11 +235,19 @@ def test_periodic_send_with_modifying_data(bus):
     Battery_discharge_voltage_default      = 51
     # oscillation detection
     oscillation_got_detected=False
+    oscillation_mqtt_interval=10
+    oscillation_mqtt_last_run=0.0
+    
     check_can0_up_interval = 10;
     check_can0_up_last_run = 0.0
+    can_retries=0
 
     q_check_can = multiprocessing.Queue()
     q_my_read_bms = multiprocessing.Queue()
+    q_do_auth_and_query = multiprocessing.Queue()
+    q_file_check =  multiprocessing.Queue()
+    q_sma=multiprocessing.Queue()
+
 
     ###############
     # SEMS  STUFF
@@ -246,6 +276,11 @@ def test_periodic_send_with_modifying_data(bus):
     task_tx_Battery_limits = bus.send_periodic(msg_tx_Battery_limits, 1)
     task_tx_Battery_Error_Warnings = bus.send_periodic(msg_tx_Battery_Error_Warnings, 1)
     time.sleep(0.5)
+
+    # setting up SMA energy meter
+    ##############################
+    my_sma_socket=sma_em_capture_package.sma_socket_setup()
+
  
     ###########################################################################################
     # main - loop - query the bms, check under/over-volt, updates message for peridic can-task
@@ -253,7 +288,6 @@ def test_periodic_send_with_modifying_data(bus):
     
     while True:
       now=time.time()
-
       # can-bus counter alive packet
       #########################
       Alive_packet = Alive_packet+1
@@ -267,17 +301,26 @@ def test_periodic_send_with_modifying_data(bus):
       #####################
       print_debug("can interface used",channel)
       if (now-check_can0_up_last_run > check_can0_up_interval):
-            mp1 = multiprocessing.Process(target=check_can_up.check_can_interface_up,args=(channel,q_check_can))
-            mp1.start()
-            while (not q_check_can.empty()):
-               was_up = q_check_can.get() 
-               #was_up=check_can_up.check_can_interface_up (channel)
+            check_can0_up_last_run = now
+            #was_up=check_can_up.check_can_interface_up(channel)
+            mp_check_can = multiprocessing.Process(target=check_can_up.check_can_interface_up,args=(channel,q_check_can))
+            mp_check_can.start()
+      while (not q_check_can.empty()):
+               was_up = q_check_can.get()
                if (not was_up):
                   msg="Interface " + channel + "was_up status"
                   print_debug(msg, "DOWN")
-               check_can0_up_last_run = now
+                  can_retries = can_retries +1
+                  if (can_retries > 5):
+                        cmd="sudo reboot"
+                        q_reboot=multiprocessing.Queue()
+                        # now reboot the RPI to bring back the interface as last resort
+                        my_subprocess_run.run_cmd(cmd,q)
+      
 
-
+      
+                   
+                  
       # query the BMS
       ###############
       #my_soc,my_volt,my_ampere,my_temp,min_volt, max_volt, current,success=readBMS()
@@ -296,24 +339,38 @@ def test_periodic_send_with_modifying_data(bus):
       if (not bms_read_success):
           print_debug("Status reading the BMS","Fail")
 
-
-      sems_success=False
-
+      # query SEMS
+      ###############
       if (Sems_Flag):
            # query sems -portal
            #####################
+           sems_success=False
            if (now - last_sems_run > 15):
                 last_sems_run=now
-                token,uid,timestamp,expiry,api,bp_a,bp_w,sems_success= sems.do_auth_and_query(token,uid,timestamp,expiry,api,sems_url_oauth)
-                if (sems_success):
+                mp_do_auth_and_query = multiprocessing.Process(target=sems.do_auth_and_query,args=(token,uid,timestamp,expiry,api,sems_url_oauth,q_do_auth_and_query))
+                mp_do_auth_and_query.start()
+           while (not q_do_auth_and_query.empty()):
+                    q=q_do_auth_and_query.get()
+                    token=q[0]
+                    uid=q[1]
+                    timestamp=q[2]
+                    expiry=q[3]
+                    api=q[4]
+                    bp_a=q[5]
+                    bp_w=q[6]
+                    sems_success=q[7]
+
+                #token,uid,timestamp,expiry,api,bp_a,bp_w,sems_success= sems.do_auth_and_query(token,uid,timestamp,expiry,api,sems_url_oauth)
+           if (sems_success):
                    print_debug("sems_Query", "Success")
-                else:
+                   print_debug ("sems ampere[A] (+ charge, -discharge)",bp_a)
+                   print_debug ("sems power[W] (+ charge, -discharge)",bp_w)
+                   sems_current_ringbuffer_A.append(bp_a) 
+                   if (global_mqtt):
+                       my_mqtt.publish(mqtt_client,"sems/Ampere",str(bp_a)) 
+                       my_mqtt.publish(mqtt_client,"sems/Watt",str(bp_w)) 
+           else:
                    print_debug("Sems_Query", "Failure")
-                print_debug ("sems ampere[A] (+ charge, -discharge)",bp_a)
-                print_debug ("sems power[W] (+ charge, -discharge)",bp_w)
-                sems_current_ringbuffer_A.append(bp_a) 
-                my_mqtt.publish(mqtt_client,"sems/Ampere",str(bp_a)) 
-                my_mqtt.publish(mqtt_client,"sems/Watt",str(bp_w)) 
            print_debug("sems ringbuffer",sems_current_ringbuffer_A.get())
            print_debug("sems average",sems_current_ringbuffer_A.average())
            print_debug("sems min",sems_current_ringbuffer_A.min())
@@ -344,26 +401,39 @@ def test_periodic_send_with_modifying_data(bus):
          print_debug("trigger charge limit 0","sems")
          
 
-      # oscillation detection
+      # oscillation detection - requires SMA enery meter
       ########################
       # populate both ringbuffers, SMA watt and Solis Ampere
-      oscillation_got_detected,meter_ringbuffer=populate_sma_ringbuffer(my_mqtt.meter,meter_ringbuffer)
+      mp_sma = multiprocessing.Process(target=sma_em_capture_package.sma_socket_decode,args=(my_sma_socket,q_sma))
+      mp_sma.start()
+      oscillation_got_detected=False
+      while (not q_sma.empty()):
+         meter=q_sma.get()
+         #oscillation_got_detected,meter_ringbuffer=populate_sma_ringbuffer(my_mqtt.meter,meter_ringbuffer)
+         oscillation_got_detected,meter_ringbuffer=populate_sma_ringbuffer(meter,meter_ringbuffer)
       if (oscillation_got_detected):
           print_debug("oscillation_got_detected", "True")
           #print_debug ("meter_ringbuffer",meter_ringbuffer())
-          print (meter_ringbuffer.get())
-
+          #print (meter_ringbuffer.get())
       else:
           print_debug("oscillation_got_detected", "False")
+
+      if (now - oscillation_mqtt_last_run > oscillation_mqtt_interval):
+            oscillation_mqtt_last_run=now
+            if oscillation_got_detected:
+              if (global_mqtt):
+                my_mqtt.publish(mqtt_client,"sems/oscillation_detected",1)
+            else:
+              if (global_mqtt):
+                my_mqtt.publish(mqtt_client,"sems/oscillation_detected",0)
 
       current_ringbuffer=populate_solis_current_ringbuffer(current,current_ringbuffer)
       print_debug("solis_current", current)
       # wait 30sec inbetween each modification
       if (oscillation_enabled_flag and now - timestamp_last_osci_run > 30 and oscillation_got_detected):
                  Battery_charge_current_limit=Battery_charge_current_limit/2
-                 Battery_discharge_current_limit=Battery_discharge_current_limit/2
+                 #Battery_discharge_current_limit=Battery_discharge_current_limit/2
                  timestamp_last_osci_run= now
-                 my_mqtt.publish(mqtt_client,"solis/oscillation_got_detected",1)
 
       
       # DEBUG ONLY - overwirtes any previus automtism derived values
@@ -401,13 +471,14 @@ def test_periodic_send_with_modifying_data(bus):
       print_debug("next mqtt sent in seconds",int(mqtt_sent_interval - (now - last_mqtt_run)))
       if (now - mqtt_sent_interval   > last_mqtt_run ):        #wait 20seconds before publish next mqtt
           last_mqtt_run=now
-          topic="jk_pylon/Battery_charge_current_limit"
-          message=str(Battery_charge_current_limit)
-          my_mqtt.publish(mqtt_client,topic,message)      
+          if (global_mqtt):
+             topic="jk_pylon/Battery_charge_current_limit"
+             message=str(Battery_charge_current_limit)
+             my_mqtt.publish(mqtt_client,topic,message)      
         
-          topic="jk_pylon/Battery_discharge_current_limit"
-          message=str(Battery_discharge_current_limit)
-          my_mqtt.publish(mqtt_client,topic,message)      
+             topic="jk_pylon/Battery_discharge_current_limit"
+             message=str(Battery_discharge_current_limit)
+             my_mqtt.publish(mqtt_client,topic,message)      
 
       # truncating the logfile is getting to large. its not a log-rotate... just deletes the old one
       if (write_to_file):
@@ -417,13 +488,16 @@ def test_periodic_send_with_modifying_data(bus):
 
         print_debug(filename+" size in MB", size_mb)
         if size> logfile_size:
-          #print_debug("truncate","")
-          #my_file.flush()
-          #my_file.truncate(0)
-          #my_file.flush()
+        #if size> 3:
           #new=filename+"old"
           #os.rename(filename, new)
-          os.remove(filename)
+          #cmd="gzip " + new
+          cmd="gzip " + filename
+          # the run.cmd command executes the subprocess command to zip the file
+          mp_gzip = multiprocessing.Process(target=check_can_up.run_cmd, args=(cmd,q))
+          mp_gzip.start()
+          #status, stdout_str=check_can_up.run_cmd(cmd)
+          #os.remove(filename)
 
       time.sleep(sleepTime)
 
@@ -543,10 +617,24 @@ if __name__ == "__main__":
  
    # mqtt
    #######
-   mqtt_client=my_mqtt.connect_mqtt()
-   mqtt_client.loop_start()
-   mqtt_client.subscribe("SMA-EM/status/1900203015")
 
+   s = socket.socket()
+   mqtt_ip= '192.168.178.216'
+   global_mqtt=False
+   mqtt_port= 1883  # port number is a number, not string
+   try:
+       s.connect((mqtt_ip, mqtt_port))
+   except Exception as e:
+       print("something's wrong with %s:%d. Exception is %s" % (mqtt_ip, mqtt_port, e))
+       global_mqtt=False
+   else:
+       mqtt_client=my_mqtt.connect_mqtt(mqtt_ip,mqtt_port)
+       mqtt_client.loop_start()
+       # subscribe not any longer required. sma-em package is part of this script
+       #mqtt_client.subscribe("SMA-EM/status/1900203015")
+   finally:
+       s.close()
+   
    reset_msg = can.Message(arbitration_id=0x00, data=[0, 0, 0, 0, 0, 0], is_extended_id=False)
 
    #selecting can-bus interface

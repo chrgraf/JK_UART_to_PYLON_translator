@@ -52,6 +52,8 @@ from requests import Request, Session
 import json
 from datetime import datetime, timedelta
 from urllib.parse import urljoin
+import multiprocessing
+
 
 # for username/credentials edit a file sems_config.py
 # behn@rpi5:~/jk_venv $ cat sems_config.py
@@ -68,6 +70,7 @@ import sems_config
 sems_url_query="v2/PowerStation/GetMonitorDetailByPowerstationId"
 
 verbose=False
+#verbose=True
 
 def print_banner(t):
   print ("")
@@ -205,13 +208,13 @@ def create_query_string(token, uid, timestamp):
 ##################################
 # SEMS - all in one
 ##################################
-def do_auth_and_query(token,uid,timestamp,expiry,api,sems_url_oauth):
+def do_auth_and_query(token,uid,timestamp,expiry,api,sems_url_oauth,q_do_auth_and_query):
    success=False
    code = ""
    i=0
    bp_a=0
    bp_w=0
-   while (code != "0" and i<=2):
+   while (code != "0" and i<=3):
       i=i+1
       # lets first create a Query String to obtain a valid token
       # crafting a valid Query-String was the difficult task of this script
@@ -227,6 +230,8 @@ def do_auth_and_query(token,uid,timestamp,expiry,api,sems_url_oauth):
          if verbose:
             print(">>>Query generator was successful")
          bp_a, bp_w=get_battery_power_from_json(y)
+         r=[token,uid,timestamp,expiry,api,bp_a, bp_w,success]
+         q_do_auth_and_query.put(r)
       else:
          # auth-failed, token expired,.. - lets get a fresh token
          #print("code:", code)
@@ -250,13 +255,31 @@ def main():
    sems_url_oauth="https://www.semsportal.com/api/v2/Common/CrossLogin"
    api="https://eu.semsportal.com/api/"  # will be overwritten as part of the get_token
    success=False
+   q_do_auth_and_query = multiprocessing.Queue()
+
    # the one ond only call needed. this routine tries to re-use existing token.
    # if token not good, trying to aquire a new one and use it for subsequent call
    # fresh token is stored in variable "token"
-   token,uid,timestamp,expiry,api,bp_a,bp_w,success= do_auth_and_query(token,uid,timestamp,expiry,api,sems_url_oauth)
-   if (success):
+   #token,uid,timestamp,expiry,api,bp_a,bp_w,success= do_auth_and_query(token,uid,timestamp,expiry,api,sems_url_oauth)
+   
+   mp_do_auth_and_query = multiprocessing.Process(target=do_auth_and_query,args=(token,uid,timestamp,expiry,api,sems_url_oauth,q_do_auth_and_query))
+   mp_do_auth_and_query.start()
+   mp_do_auth_and_query.join()
+   while (not q_do_auth_and_query.empty()):
+    q=q_do_auth_and_query.get()
+    if verbose:
+      print("q: ", q)
+    token=q[0]
+    uid=q[1]
+    timestamp=q[2]
+    expiry=q[3]
+    api=q[4]
+    bp_a=q[5]
+    bp_w=q[6]
+    success=q[7]
+    if (success):
         print("Success")
-   else:
+    else:
         print("Failure")
 
   
