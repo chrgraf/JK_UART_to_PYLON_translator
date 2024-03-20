@@ -1,14 +1,34 @@
 # JK_UART_to_PYLON_translator
 
 Short Summary:
-reads JK_BMS via UART and transmits the data via CAN-BUS emulating Pylontech protocol
+reads JK_BMS via UART and transmits the data via CAN-BUS emulating Pylontech protocol to a Solis battery Storage inverter
 Inverter sees Volt, Current, SOC and Temp.
 Script  has trivial control-loop to control actual current for charging and discharging. e.g. if the highest cell goes beyond 3.5V max-charge current gets lowered, resulting that the inverter loweres the charging power.
 Same holds true for the weakest cell. Depending on weakest cell voltage, allowed current-draw gets limited and finally adjusted to zero t protect the lowest cell against over-discharge.
 
+# longer story
+- Most Important
+    - reading JK-BMS via serial UART
+	- pushing JK-BMS-data via CANBUS "Pylon" Protocol to a Solis Inverter
+- sending some stuff to a MQTT-Broker
+- reads a Goodwe-Inverter via HTTP/Sems-Portal
+    - will be chnaged against direct IP-connection over next time
+- reads directly SMA energy-meter via IP-Socket from the network
+- BMS-Features 
+    - reduces Charging-Power to 0 Ampere of max-cell voltage >3.5V
+	- reduces Discharging-Power to 0 Ampaere if min-cell volatge drops below 3.0V
+- counteracts if both inverters work against each other
+    - if Goodwe charges battery, then Solis is prohibited to discharge
+	- if Goodwe discharge battery, then Solis is prohibited to charge
+- making good use of multiprocessing-library
+- both inverters tend to produce oscialltion. ongoing work to control this via enforcing malually charge/discharge-limts on Solis	
+	
 
 # major updates
-* added MQTT send/receive
+* March 2024
+    - added MQTT send/receive
+	- counteracting if mqtt-broker is not available on startup
+	- added to read SMA entergy-meter to read via socket
 * Goodwe added
     * mine very unusual setup inclides a Goodwe EM3648 as well. As I need to avoid that e.g. Goodwe discharges to allow the Solis to charge, I added major control-loops.
     * Important on the Goodwe: Goodwe can be removed from the picture by setting the variable  Sems_Flag = False
@@ -36,17 +56,24 @@ credits go to:
 * Prasath Premapalan for the can-decoding script
     * https://stackoverflow.com/users/12183162/prasath-premapalan
     * https://stackoverflow.com/questions/58306438/how-to-decode-message-from-a-canbus-iptronik
+* by Wenger Florian wenger@unifox.at for the SMA-energy-meter
 
 
 Tested
 =======
+Initially I tried ti get it runnign with a RPI2. To sloppy and instable.
+Actually running on a RPI5, which is overpowered. S othe truth seems in the middle...
 ```
-RPI2          : with wavshare can-hat and usb-serial converter
+RPI5          : with wavshare can-hat and usb-serial converter
+can-HW        : https://www.waveshare.com/wiki/2-CH_CAN_HAT#CAN_bus:wake
 JK BMS        : JK Smart Active Balance BMS BD6A20S10P
 Solis inverter: RAI-3K-48ES-5G
 ```
 
 # testing Basic function blocks first
+As the project does include now many different aspects, its easu to break it...
+Intention of below verification-steps is to test each function standalone! Shall massively help in identifying if something is non-functional
+
 ## Goodwe
 - Mine setup includes both a solis and a goodwe. I need to avoid that Solis e.g. discharges to allow the goodwe charging.
 - actually Goodwe gets queried via HTTP Sems-Port. Suboptimal.
@@ -60,6 +87,18 @@ behn@rpi5:~/jk_venv $ ./sems.py
 Success
 ```
 
+## checking SMA-energy Meter reading
+You need to make sure to edit the correct serial-number for your enery-meter
+
+```
+behn@rpi5:~/jk_venv $ grep serial sma_em_capture_package.py
+   smaemserials=1900203015
+
+behn@rpi5:~/jk_venv $ python sma_em_capture_package.py
+Bezug von Grid: -10.0 W
+```
+
+
 ## checking UART-connection to JK-BMS
 One major comoponent is to read via Serial UART from the BMS. In mine setup the serial adapaper is attached via ttyUSB0.
 Change as required in the my_read_bms.py script:
@@ -67,7 +106,7 @@ Change as required in the my_read_bms.py script:
 behn@rpi5:~/jk_venv $ grep USB0 my_read_bms.py
       bms = serial.Serial('/dev/ttyUSB0')
 ```
-Executing the scrupt shall result in "True"
+Executing the script shall result in "True"
 ```
 behn@rpi5:~/jk_venv $ python my_read_bms.py
 query the BMS
@@ -107,17 +146,39 @@ logging to console is disabled
 Connected to MQTT Broker!
 ```
 
+## python serial library
+I gave up on trying to use venv and pip-install serial.
+Whenever I used venv or serial-lib via pip-install, the UART to JK-BMS failed
 
+I solved it by making sure to install serial-library via: 
+```
+sudo apt-get install python3-serial
+Note: For me, trying to use pip install serial resulted in UART to BMS failing!
+
+```
 ## making the script autostart as a service
 If the script stops, that the inverter does not have a valid can-bus coomunication and hence all charging/discharging is stopped by the inverter. Making the script a service, even reloads the scripts in case e.g. it was killed.. 
 
 some good reading: https://medium.com/@benmorel/creating-a-linux-service-with-systemd-611b5c8b91d6
 
+
 ### systemd script
+make sure to adopt your user-id in below script!
+
 ```bash
-behn@rpi2:~ $ cat /etc/systemd/system/alien_master.service
+behn@rpi5:~/jk_venv $ cat /etc/systemd/system/jk_pylon.service
+
+# copy this file into /etc/systemd/system
+# replace all occurences of /home/behn/jk_pylon with your venv dir
+# make the service starting after reboot: systemctl enable jk_pylon
+# show status: systemctl show jk_pylon
+# stop it: systemctl stop jk_pylon
+# if you change this script, reload systemctl: systemctl daemon-reload
+
+
+
 [Unit]
-Description=Launching alien_master JK_pylon converter
+Description=Launching JK_pylon converter
 After=network.target
 StartLimitIntervalSec=0
 
@@ -125,8 +186,13 @@ StartLimitIntervalSec=0
 Type=simple
 Restart=always
 RestartSec=1
-User=xxx                                                     # change name according to your account used on your own RPI
-ExecStart=/home/behn/PYLON_EMU-master/alien_master1.py       # change path accordingly to match your setup
+User=<>                                                       # <<<< enter your user-idf here!
+WorkingDirectory=/home/behn//jk_venv
+PermissionsStartOnly=true
+#Environment=PYTHONPATH=/home/behn/jk_pylon_venv
+#ExecStartPre=+/bin/bash -c 'ip link set can0 up type can bitrate 500000'
+ExecStartPre=-/usr/sbin/ip link set can0 up type can bitrate 500000
+ExecStart=/home/behn/jk_venv/jk_pylon_can.py
 
 [Install]
 WantedBy=multi-user.target
@@ -136,17 +202,17 @@ WantedBy=multi-user.target
 ### autostarting and enabling the systemd script
 Once added the script execute:
 ```bash
-$ systemctl start alien_master
+$ systemctl start jk_pylon
 ```
 
 And automatically get it to start on boot:
 ```bash
-$ systemctl enable alien_master
+$ systemctl enable jk_pylon
 ```
 
 stopping the script
 ```bash
-$ systemctl stop alien_master
+$ systemctl stop jk_pylon
 ```
 
 cabling
