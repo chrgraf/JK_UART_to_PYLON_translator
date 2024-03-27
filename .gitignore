@@ -6,3 +6,4 @@ old/
 *.log
 get_files.sh
 
+sems_config.py
