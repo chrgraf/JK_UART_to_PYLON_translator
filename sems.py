@@ -287,13 +287,14 @@ def main():
     soc=q[8]
     if (success):
         print("Success")
+        print("SOC[%]                  :",soc)
         if (bp_a>0):
           print("Charging, Battery Ampere:",bp_a)
           print("Charging, Battery Watt  :",bp_w)
         else:
           print("Discharging, Battery Ampere:",bp_a)
           print("Discharging, Battery Watt  :",bp_w)
-        print("SOC[%]                  :",soc)
+
 
     else:
         print("Failure reading Sems Portal")

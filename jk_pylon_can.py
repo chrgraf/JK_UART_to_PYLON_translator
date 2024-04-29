@@ -71,8 +71,7 @@ oscillation_enabled_flag=True          # requires SMA smartmeter
 last_monomer_run = 0.0
 my_mqtt.meter=Queue()
 
-from print_debug import print_debug as print_debug
-from print_debug import log_setup as log_setup
+import print_debug
 
 #read SMA power-meter
 import sma_em_capture_package 
@@ -91,45 +90,51 @@ def byteArrayToHEX(byte_array):
 
 
 
-def set_discharge_limit(min_volt,Battery_discharge_current_limit,my_soc,timestamp_discharge_limit_change):
+def set_discharge_limit(min_volt,Battery_discharge_current_limit,my_soc):
   now = time.time()
   discharge_limit=Battery_discharge_current_limit
-  print_debug ("discharge_limit when entering set_discharge",Battery_discharge_current_limit)
+  print_debug.my_debug ("discharge_limit when entering set_discharge",Battery_discharge_current_limit)
 
-  mylist=[[3.15,0],[3.20,20],[3.60,60]]
+  #mylist=[[3.15,0],[3.20,20],[3.60,60]]
+  mylist=[[3.15,0],[3.60,60]]
   for i in range(len(mylist)):
-     if (min_volt<=mylist[i][0]):
+     try:
+       if (min_volt<=mylist[i][0]):
            discharge_limit=mylist[i][1]
-           print_debug("discharge_limit min_volt_check",discharge_limit)
+           print_debug.my_debug("discharge_limit min_volt_check",discharge_limit)
            break
+     except:
+           discharge_limit=0
+          
+  print_debug.my_debug("set_discharge_limit_1",discharge_limit)
  
   # making the discharge-limit smaller is always ok
   if (discharge_limit<Battery_discharge_current_limit):
         Battery_discharge_current_limit=discharge_limit
-        print_debug("discharge_limit<Battery_discharge_current_limit",Battery_discharge_current_limit)
+        print_debug.my_debug("set_discharge_limit_2",Battery_discharge_current_limit)
    
   # allowing to increase the discharge-limit
-  elif (my_soc > 35 and now - timestamp_discharge_limit_change > 30):
-         Battery_discharge_current_limit = discharge_limit
-         timestamp_discharge_limit_change = now
-         print_debug("Battery_discharge_current_limit increase",Battery_discharge_current_limit)
+  elif (my_soc > 45):  
+        Battery_discharge_current_limit = discharge_limit
+        print_debug.my_debug("set_discharge_limit_3",discharge_limit)
   
-  x=now - timestamp_discharge_limit_change
-  print_debug("discharge timer",x)
-  print_debug("result set_discharge_limit", Battery_discharge_current_limit)
-  return(Battery_discharge_current_limit,timestamp_discharge_limit_change)
+  print_debug.my_debug("set_discharge_limit_4",Battery_discharge_current_limit)
+  return(Battery_discharge_current_limit)
 
  
    
 def set_charge_limit(max_volt,Battery_charge_current_limit_set_by_overvolt_protect,my_soc,oscillation_got_detected,timestamp_charge_limit_change_overvolt_protect):
   now = time.time()
   c_limit=Battery_charge_current_limit_set_by_overvolt_protect
-  mylist=[[3.60,0],[3.55,0],[3.48,0],[3.45,00],[3.42,20],[3.2,60]]
+  mylist=[[3.60,0],[3.55,0],[3.49,0],[3.46,15],[3.43,20],[3.38,30],[3.2,60]]
   for i in range(len(mylist)):
-     if (max_volt>=mylist[i][0]):
+     try:
+       if (max_volt>=mylist[i][0]):
            c_limit=mylist[i][1]
-           print_debug("charge_limit initial array",c_limit)
+           print_debug.my_debug("charge_limit initial array",c_limit)
            break
+     except:
+         c_limit=0
   
   #print("c_limit,volt,soc",c_limit,max_volt,my_soc)
   # making the charge-limit smaller is always ok
@@ -141,12 +146,12 @@ def set_charge_limit(max_volt,Battery_charge_current_limit_set_by_overvolt_prote
   #   >> only increase if max_volt is save (<3.4Volt)
   #   >> only increase if SOC < 97%
   # wait at least 600secs before trying to increase back again
-  elif (my_soc <=97 and max_volt < 3.4 and not oscillation_got_detected and now - timestamp_charge_limit_change_overvolt_protect> 600):
+  elif (my_soc <=98 and max_volt < 3.4 and not oscillation_got_detected and (now - timestamp_charge_limit_change_overvolt_protect> 1800)):
              Battery_charge_current_limit_set_by_overvolt_protect=c_limit
              timestamp_charge_limit_change_overvolt_protect= now
              #print ("Battery_charge_current_limit done larger",Battery_charge_current_limit)
 
-  print_debug ("result set_charge_limit_", Battery_charge_current_limit_set_by_overvolt_protect)
+  print_debug.my_debug ("result set_charge_limit", Battery_charge_current_limit_set_by_overvolt_protect)
   return(Battery_charge_current_limit_set_by_overvolt_protect, timestamp_charge_limit_change_overvolt_protect)
 
 def populate_sma_ringbuffer_old (meter,meter_ringbuffer_W):
@@ -176,9 +181,9 @@ def populate_sma_ringbuffer_old (meter,meter_ringbuffer_W):
             meter_ringbuffer_W.append(value)
 
     
-    print_debug ("meter ringbuffer average", f"{meter_ringbuffer_W.average():.0f}")
-    print_debug ("meter ringbuffer min", f"{meter_ringbuffer_W.min():.0f}")
-    print_debug ("meter ringbuffer max", f"{meter_ringbuffer_W.max():.0f}")
+    print_debug.my_debug ("meter ringbuffer average", f"{meter_ringbuffer_W.average():.0f}")
+    print_debug.my_debug ("meter ringbuffer min", f"{meter_ringbuffer_W.min():.0f}")
+    print_debug.my_debug ("meter ringbuffer max", f"{meter_ringbuffer_W.max():.0f}")
     # gt_count counts elements in buffer GreaterThen
     # lt_count counts elements in buffer LessThen
 
@@ -191,13 +196,14 @@ def populate_sma_ringbuffer (meter,meter_ringbuffer_W):
     # have in mind, ringbuffer is WATT, not Ampere
  
     limit_min_max=300
-    limit_average=300
-    min_event_osci_true=8
+    limit_average=400
+    min_event_osci_true=5
     oscillation_got_detected=False
     meter_ringbuffer_W.append(meter)
-    print_debug ("meter ringbuffer average", f"{meter_ringbuffer_W.average():.0f}")
-    print_debug ("meter ringbuffer min", f"{meter_ringbuffer_W.min():.0f}")
-    print_debug ("meter ringbuffer max", f"{meter_ringbuffer_W.max():.0f}")
+    print_debug.my_debug ("meter ringbuffer average[W]", f"{meter_ringbuffer_W.average():.0f}")
+    print_debug.my_debug ("meter ringbuffer min[W]", f"{meter_ringbuffer_W.min():.0f}")
+    print_debug.my_debug ("meter ringbuffer max[W]", f"{meter_ringbuffer_W.max():.0f}")
+    print_debug.my_debug ("meter actual[W]", f"{meter:.0f}")
     # gt_count counts elements in buffer GreaterThen
     # lt_count counts elements in buffer LessThen
 
@@ -232,13 +238,16 @@ def test_periodic_send_with_modifying_data(bus):
     Battery_discharge_current_limit = Battery_discharge_current_limit_default
     Not_to_exceed_discharge_limit=Battery_discharge_current_limit_default
 
-    timestamp_discharge_limit_change = 0.0               # used to allow increase discharge-limit back again
+
     timestamp_charge_limit_change = 0.0                  # used to allow increase charge-limit back again
     timestamp_last_osci_limit_change_run = 0.0           # how ofetn do we want to check oscilattion and REDUCE the limits
     timestamp_charge_limit_change_overvolt_protect=0.0
     timestamp_sems_triggered_reduce_charge_limit=0.0
 
-    current_max_size=12                                  # elements in ringbuffer
+    generic_interval_1 = 5                               # used for JK_BMS_queary and can-bus checking
+    timestamp_generic_interval_1=0.0
+
+    current_max_size=20                                  # elements in ringbuffer
     current_ringbuffer=myRingBuffer(current_max_size)    # init/flush the ringbuffer
     meter_ringbuffer_W=myRingBuffer(current_max_size)    # init/flush the ringbuffer
     Battery_charge_voltage_default         = 55
@@ -248,22 +257,22 @@ def test_periodic_send_with_modifying_data(bus):
     oscillation_mqtt_interval=10
     oscillation_mqtt_last_run=0.0
     oscillation_last_seen = 0.0
-    check_can0_up_interval = 10;
-    check_can0_up_last_run = 0.0
-    can_retries=0
 
-    q_check_can = multiprocessing.Queue()
-    q_my_read_bms = multiprocessing.Queue()
+    q_check_can         = multiprocessing.Queue()
+    q_my_read_bms       = multiprocessing.Queue()
     q_do_auth_and_query = multiprocessing.Queue()
-    q_file_check =  multiprocessing.Queue()
-    q_sma=multiprocessing.Queue()
+    q_sma               = multiprocessing.Queue()
 
+    bms_read_success=False
+    can_fail_counter=0
 
     ###############
     # SEMS  STUFF
     ###############
     Sems_Flag = True                  # set this to True if you have a Goodwe-inverter
     #Sems_Flag = False                  # set this to True if you have a Goodwe-inverter
+    goodwe_enforced_zero_charge   =False
+    goodwe_enforced_zero_discharge=False
     if (Sems_Flag):
        token=""
        uid=""
@@ -273,6 +282,7 @@ def test_periodic_send_with_modifying_data(bus):
        sems_url_oauth="https://www.semsportal.com/api/v2/Common/CrossLogin"
        sems_current_ringbuffer_A=myRingBuffer(1)           # init the ringbuffer of size 1
        last_sems_run=0.0
+       sems_success=False
     
     # setting up periodic task to send can-bus updates
     ##################################################
@@ -287,6 +297,35 @@ def test_periodic_send_with_modifying_data(bus):
     task_tx_Battery_Error_Warnings = bus.send_periodic(msg_tx_Battery_Error_Warnings, 1)
     time.sleep(0.5)
 
+
+    # one time reading the BMS with JOIN-method to init all variables
+    ##################################################################
+    bms_read_success=False
+    bms_count=0
+    while (not bms_read_success and bms_count<=3):              # 3 * retry
+              mp_read_bms = multiprocessing.Process(target=my_read_bms.readBMS, args=(bms,q_my_read_bms,))
+              mp_read_bms.start()
+              mp_read_bms.join()
+              q=q_my_read_bms.get()
+              my_soc=q[0]
+              my_volt=q[1]
+              my_ampere=q[2]
+              my_temp=q[3]
+              min_volt=q[4]
+              max_volt=q[5]
+              bms_read_success=q[6]
+              #print("bms_read_success",bms_read_success)
+              if (not bms_read_success):
+                  print_debug.my_debug("Status reading the BMS","Fail")
+                  print("Status reading the BMS","Fail")
+                  time.sleep(5)            # wait 5seconds before retrying
+              bms_count=bms_count+1
+    if (not bms_read_success):
+          msg="reading the BMS failed. exiting the prog"
+          sys.exit(msg)
+          print_debug.my_debug(msg,"exit")
+          print(msg)
+          
     # setting up SMA energy meter
     ##############################
     my_sma_socket=sma_em_capture_package.sma_socket_setup()
@@ -303,61 +342,97 @@ def test_periodic_send_with_modifying_data(bus):
       Alive_packet = Alive_packet+1
       if Alive_packet >= 4611686018427387904:
         Alive_packet = 2
-      print_debug ("------ new run----------------","")
-      print_debug("run", Alive_packet )
+      print_debug.my_debug ("------ new run----------------","")
+      print_debug.my_debug("run", Alive_packet )
 
-      
+      #print("Wait timer") 
+      #time.sleep(100) 
+ 
       # check if can0 interface is up
       #####################
-      print_debug("can interface used",channel)
-      if (now-check_can0_up_last_run > check_can0_up_interval):
-            check_can0_up_last_run = now
-            #was_up=check_can_up.check_can_interface_up(channel)
-            mp_check_can = multiprocessing.Process(target=check_can_up.check_can_interface_up,args=(channel,q_check_can))
-            mp_check_can.start()
-      while (not q_check_can.empty()):
-               was_up = q_check_can.get()
-               if (not was_up):
-                  msg="Interface " + channel + "was_up status"
-                  print_debug(msg, "DOWN")
-                  can_retries = can_retries +1
-                  if (can_retries > 5):
-                        cmd="sudo reboot"
-                        q_reboot=multiprocessing.Queue()
-                        # now reboot the RPI to bring back the interface as last resort
-                        my_subprocess_run.run_cmd(cmd,q)
-      
+      print_debug.my_debug("can interface used",channel)
+      check_can_join=False
+      qs=0
+      if (now-timestamp_generic_interval_1> generic_interval_1):
+            check_can_join=True
+            #mp_check_can = multiprocessing.Process(target=check_can_up.check_can_interface_up,args=(channel,can_fail_counter,q_check_can))
+            #mp_check_can.start()
+            was_up,can_fail_counter=check_can_up.check_can_interface_up (channel,can_fail_counter)
 
+      if False:
+          while (not q_check_can.empty()):
+               result=q_check_can.get(block=True, timeout=1)
+               print("result: ", result)
+               was_up=result[0]
+               can_fail_counter = result[1]
+               print("content was_up: ", was_up)
+               print("content can-fail-counter: ", can_fail_counter)
+               print("")
+               print("type can_fail-counter:",type(can_fail_counter))
+               msg="can_fail_counter"
+               print_debug.my_debug(msg, str(can_fail_counter))
+               
+      if (not was_up):
+                  msg="Interface " + channel + "was_up status"
+                  print_debug.my_debug(msg, "DOWN")
+                  print(msg)
+                  time.sleep(1)
+                  if (can_fail_counter > 30):
+                        msg="REBOOTING now becasue can_fail_counter value"
+                        print_debug.my_debug(msg, str(can_fail_counter))
+                        cmd="sudo reboot"
+                        #q_reboot=multiprocessing.Queue()
+                        #my_subprocess_run.run_cmd(cmd,q_reboot)
+                        my_subprocess_run.run_cmd(cmd)
       
-                   
                   
       # query the BMS
       ###############
-      #my_soc,my_volt,my_ampere,my_temp,min_volt, max_volt, current,success=readBMS()
-      mp_read_bms = multiprocessing.Process(target=my_read_bms.readBMS, args=(bms,q_my_read_bms,))
-      mp_read_bms.start()
-      mp_read_bms.join()
-      q=q_my_read_bms.get()
-      my_soc=q[0]
-      my_volt=q[1]
-      my_ampere=q[2]
-      my_temp=q[3]
-      min_volt=q[4]
-      max_volt=q[5]
-      current=q[6]
-      bms_read_success=q[7]
-      #print(bms_read_success)
-      if (not bms_read_success):
-          print_debug("Status reading the BMS","Fail")
-          #print("Status reading the BMS","Fail")
+      read_bms_join=False             # multiprocessing_flag
+      if (now-timestamp_generic_interval_1> generic_interval_1):
+          mp_read_bms = multiprocessing.Process(target=my_read_bms.readBMS, args=(bms,q_my_read_bms,))
+          mp_read_bms.start()
+          read_bms_join=True          # triggers to set join later on
+      while (not q_my_read_bms.empty()):
+           bms_read_success=False
+           q=q_my_read_bms.get()
+           my_soc=q[0]
+           my_volt=q[1]
+           my_ampere=q[2]
+           my_temp=q[3]
+           min_volt=q[4]
+           max_volt=q[5]
+           bms_read_success=q[6]
+           #print("bms_read_success",bms_read_success)
+           if (not bms_read_success):
+                print_debug.my_debug("Status reading the BMS","Fail")
+                print("Status reading the BMS","Fail")
+           else:
+               # populate solis ringbuffer_ampere
+               current_ringbuffer=populate_solis_current_ringbuffer(my_ampere,current_ringbuffer)
+               print_debug.my_debug("solis_current", my_ampere)
 
+
+
+      # query SMA meter
+      #################
+      mp_sma = multiprocessing.Process(target=sma_em_capture_package.sma_socket_decode,args=(my_sma_socket,q_sma))
+      mp_sma.start()
+      oscillation_got_detected=False
+      oscillation_last_seen=0.0
+      while (not q_sma.empty()):
+             meter=q_sma.get()
+             # populate ringbuffer for SMA meter
+             oscillation_got_detected,meter_ringbuffer_W=populate_sma_ringbuffer(meter,meter_ringbuffer_W)
+      
       # query SEMS
       ###############
       if (Sems_Flag):
            # query sems -portal
            #####################
-           sems_success=False
+           sems_join=False
            if (now - last_sems_run > 15):
+                sems_join=True
                 last_sems_run=now
                 mp_do_auth_and_query = multiprocessing.Process(target=sems.do_auth_and_query,args=(token,uid,timestamp,expiry,api,sems_url_oauth,q_do_auth_and_query))
                 mp_do_auth_and_query.start()
@@ -372,83 +447,120 @@ def test_periodic_send_with_modifying_data(bus):
                     bp_w=q[6]
                     sems_success=q[7]
                     sems_soc=q[8]
+                    #print("sems_success",sems_success)
 
-                #token,uid,timestamp,expiry,api,bp_a,bp_w,sems_success= sems.do_auth_and_query(token,uid,timestamp,expiry,api,sems_url_oauth)
-           if (sems_success):
-                   print_debug("sems_Query", "Success")
-                   print_debug ("sems ampere[A] (+ charge, -discharge)",bp_a)
-                   print_debug ("sems power[W] (+ charge, -discharge)",bp_w)
-                   sems_current_ringbuffer_A.append(bp_a) 
-                   if (global_mqtt):
-                       my_mqtt.publish(mqtt_client,"sems/Ampere",str(bp_a)) 
-                       my_mqtt.publish(mqtt_client,"sems/Watt",str(bp_w)) 
-           else:
-                   print_debug("Sems_Query", "Failure")
-           print_debug("sems ringbuffer[A]",sems_current_ringbuffer_A.get())
-           print_debug("sems average[A]",sems_current_ringbuffer_A.average())
-           print_debug("sems min[A]",sems_current_ringbuffer_A.min())
-           print_debug("sems max[A]",sems_current_ringbuffer_A.max())
+                    if (sems_success):
+                            print_debug.my_debug("sems_query", "Success")
+                            print_debug.my_debug ("sems ampere[A] (+ charge, -discharge)",bp_a)
+                            print_debug.my_debug ("sems power[W] (+ charge, -discharge)",bp_w)
+                            sems_current_ringbuffer_A.append(bp_a) 
+                            if (global_mqtt):
+                                my_mqtt.publish(mqtt_client,"sems/Ampere",str(bp_a)) 
+                                my_mqtt.publish(mqtt_client,"sems/Watt",str(bp_w)) 
+                    else:
+                            print_debug.my_debug("sems_query", "Failure")
+           print_debug.my_debug("sems ringbuffer[A]",sems_current_ringbuffer_A.get())
+           print_debug.my_debug("sems average[A]",sems_current_ringbuffer_A.average())
+           print_debug.my_debug("sems min[A]",sems_current_ringbuffer_A.min())
+           print_debug.my_debug("sems max[A]",sems_current_ringbuffer_A.max())
 
+
+      #############################
+      # Setting the discharge limit
+      #############################
       # undervolt protection
       #####################
-      Not_to_exceed_discharge_limit, timestamp_discharge_limit_change=set_discharge_limit(min_volt,Not_to_exceed_discharge_limit,my_soc,timestamp_discharge_limit_change)
+      Not_to_exceed_discharge_limit=set_discharge_limit(min_volt,Not_to_exceed_discharge_limit,my_soc)
 
-      if (Sems_Flag and (sems_current_ringbuffer_A.average()>0)):
-         # goodwe/sems is charging
-         # if goodwe charges, then solis must not discharge
-         Battery_discharge_current_limit=0
-         goodwe_enforced_zero_discharge=True
-      else:
-         goodwe_enforced_zero_discharge=False
+      if (Sems_Flag):
+         if (sems_current_ringbuffer_A.average()>1):       # if sems_current >1, then its charging
+               # goodwe charges, then solis must not discharge
+               l=-1* current_ringbuffer.average()   # assuming we discharge, lets make a postiv value
+               l=l-bp_a                             # subtract goodwe ampaere
+               if (l>0 and meter_ringbuffer_W.average() > -40):        #only reduce if resulting limit >0 and if average > -20
+                                                                       # e.g. it does not make sense to lower doscharge, if we are at -1000W
+                  Battery_discharge_current_limit=(int)(l)
+               else:
+                  Battery_discharge_current_limit=0
+                 
+               goodwe_enforced_zero_discharge=True
+         else:
+            goodwe_enforced_zero_discharge=False
+         print_debug.my_debug("goodwe_enforced_zero_discharge",goodwe_enforced_zero_discharge)
+
+
+         # discharge-limit slow increase back again
+         ###########################################
+         if (now-timestamp_generic_interval_1> generic_interval_1 and not goodwe_enforced_zero_discharge):
+            if (Battery_discharge_current_limit<Not_to_exceed_discharge_limit):
+               Battery_discharge_current_limit=Battery_discharge_current_limit+1
+            if (Battery_discharge_current_limit>Not_to_exceed_discharge_limit):
+                Battery_discharge_current_limit=Not_to_exceed_discharge_limit
+
+         # discharge-limit fast increase back again
+         ###########################################
+         if (meter_ringbuffer_W.average() < -700 and not goodwe_enforced_zero_discharge):
+              Battery_discharge_current_limit=Not_to_exceed_discharge_limit
          
 
-      # overvolt protection
+      #############################
+      # Setting the charge limit
+      #############################
+      # overvolt protection - set Battery_charge_current_limit_set_by_overvolt_protect
       #####################
       # first deriving the MAXIMUM of charge-limit: Battery_charge_current_limit_set_by_overvolt_protect
       # used as a safeguard - whatever below stuff does, it must not be larger then the max Battery_charge_current_limit_set_by_overvolt_protect
       Battery_charge_current_limit_set_by_overvolt_protect, timestamp_charge_limit_change_overvolt_protect=set_charge_limit(max_volt,Battery_charge_current_limit,my_soc,oscillation_got_detected,timestamp_charge_limit_change)
-      print_debug("result Battery_charge_current_limit_set_by_overvolt_protect,set_charge_limit", Battery_charge_current_limit_set_by_overvolt_protect)
-      
+      print_debug.my_debug("result Battery_charge_current_limit_set_by_overvolt_protect,set_charge_limit", Battery_charge_current_limit_set_by_overvolt_protect)
+
       # avoid charging if goodwe discharges
       #######################################
-      # why meter_ringbuffer_W.average()< 1000:  >> if ringbuffer >1000, e.g. 3kw then there is no need to set charge-limit to zero
-      # why -1 for: sems_current_ringbuffer_A.average()<-1 >>> sems sometimes disharges with -40W, but even then we want the solis allow to charge..
-      #    that why we set 1A - only if goodwe discharges > 50W (1A * 50V), then we want to stop charging the solis
+      if (Sems_Flag):
+              # why: if  meter_ringbuffer_W.average()< 1000:  >> if ringbuffer >1000, e.g. 3kw then there is no need to set charge-limit to zero
+              # why -1 for: sems_current_ringbuffer_A.average()<-1 >>> sems sometimes disharges with -40W, but even then we want the solis allow to charge..
+              #    that why we set 1A - only if goodwe discharges > 50W (1A * 50V), then we want to stop charging the solis
 
-      if (Sems_Flag and sems_current_ringbuffer_A.average()<=-1.2 and meter_ringbuffer_W.average()< 1000):        # starting at -1 Ampere. in theory it shll be zero
-         # goodwe/sems is discharging
-         # if goodwe discharges, then we shall not charge the solis
-         Battery_charge_current_limit=0
-         print_debug("trigger charge limit 0, goodwe discharging","True")
-         goodwe_enforced_zero_charge=True
-         timestamp_sems_triggered_reduce_charge_limit=now
-      else:
-         goodwe_enforced_zero_charge=False
-         
+              if (sems_current_ringbuffer_A.average()<=-1.2 and meter_ringbuffer_W.average()< 1000):        # starting at -1 Ampere. in theory it shll be zero
+                 # goodwe/sems is discharging
+                 # if goodwe discharges, then we shall not charge the solis
+                 Battery_charge_current_limit=0
+                 print_debug.my_debug("trigger charge limit 0, goodwe discharging","True")
+                 goodwe_enforced_zero_charge=True
+                 timestamp_sems_triggered_reduce_charge_limit=now
+              else:
+                 goodwe_enforced_zero_charge=False
+                 
 
-      # wait 30sec inbetween each modification
-      modification_interval=30
+              # charge-limit slow increase 
+              #############################    
+              # if charge_limit was to zero(check timestamp..), slowly increase it back 
+              # e.g. after 30min, 1800sec: 1800/60 = 30... 30*2 = 60A
+              if (now-timestamp_generic_interval_1> generic_interval_1):
+                if (not goodwe_enforced_zero_charge and Sems_Flag and meter_ringbuffer_W.average()> 100):
+                     # if average > 100, then we have enough power left over. so we shall allowing to charge
+                     try: 
+                        offset = (int) ((meter_ringbuffer_W.average() / my_volt)+0)
+                     except:
+                        offset = 0.0
 
+                     Battery_charge_current_limit=Battery_charge_current_limit+offset
+
+      # safeguard
+      if (Battery_charge_current_limit>Battery_charge_current_limit_set_by_overvolt_protect):
+                    Battery_charge_current_limit = Battery_charge_current_limit_set_by_overvolt_protect
+
+      # oscillation detection
+      #######################
       if (oscillation_enabled_flag):
           # oscillation detection - requires SMA enery meter
-          ########################
-          # Query SMA meter
-          mp_sma = multiprocessing.Process(target=sma_em_capture_package.sma_socket_decode,args=(my_sma_socket,q_sma))
-          mp_sma.start()
-          oscillation_got_detected=False
-          oscillation_last_seen=0.0
-          while (not q_sma.empty()):
-             meter=q_sma.get()
-             # populate ringbuffer for SMA meter
-             oscillation_got_detected,meter_ringbuffer_W=populate_sma_ringbuffer(meter,meter_ringbuffer_W)
           if (oscillation_got_detected):
-              print_debug("oscillation_got_detected", "True")
+              print_debug.my_debug("oscillation_got_detected", "True")
               print("oscillation_got_detected", "True")
-              #print_debug ("meter_ringbuffer_W",meter_ringbuffer_W())
+              #print_debug.my_debug ("meter_ringbuffer_W",meter_ringbuffer_W())
               #print (meter_ringbuffer_W.get())
               oscillation_last_seen=now
           else:
-              print_debug("oscillation_got_detected", "False")
+              print_debug.my_debug("oscillation_got_detected", "False")
 
           if (now - oscillation_mqtt_last_run > oscillation_mqtt_interval):
                 oscillation_mqtt_last_run=now
@@ -459,72 +571,70 @@ def test_periodic_send_with_modifying_data(bus):
                   if (global_mqtt):
                     my_mqtt.publish(mqtt_client,"sems/oscillation_detected",0)
 
-          # populate solis ringbuffer_ampere
-          current_ringbuffer=populate_solis_current_ringbuffer(current,current_ringbuffer)
-          print_debug("solis_current", current)
  
-          
           # modification allowed after interval
-          if(now - timestamp_last_osci_limit_change_run > modification_interval):
+          if(now - timestamp_last_osci_limit_change_run > 60):
+               timestamp_last_osci_limit_change_run = now
                #reduce the limits
                if (oscillation_got_detected):
-                          Battery_charge_current_limit=Battery_charge_current_limit/2
-                          Battery_discharge_current_limit=Battery_discharge_current_limit/2
-                          timestamp_last_osci_limit_change_run= now
-                          print_debug("charge-limit-reduced because of oscillation",Battery_charge_current_limit)
+                          Battery_charge_current_limit=(int)(Battery_charge_current_limit/2)
+                          Battery_discharge_current_limit=(int)(Battery_discharge_current_limit/2)
+                          print_debug.my_debug("charge-limit-reduced because of oscillation",Battery_charge_current_limit)
 
                # in case no oscillation, restore old values
                #increase the limits
                if(not oscillation_got_detected):
                     if (not goodwe_enforced_zero_charge):
-                         Battery_charge_current_limit = Battery_charge_current_limit +5         # slow increase
+                         Battery_charge_current_limit = Battery_charge_current_limit +2         # slow increase
                          if Battery_charge_current_limit > Battery_charge_current_limit_set_by_overvolt_protect:
                                 Battery_charge_current_limit = Battery_charge_current_limit_set_by_overvolt_protect # never get above the limit derived by cell-protection
-                         print_debug("charge-limit-increased because of NO oscillation",Battery_charge_current_limit)
+                         print_debug.my_debug("charge-limit-increased because of NO oscillation",Battery_charge_current_limit)
                      
+                    # discharge-limit slow increase 
+                    #############################    
                     if (not goodwe_enforced_zero_discharge):
-                         #Battery_discharge_current_limit = Not_to_exceed_discharge_limit       # fast increase
-                         Battery_discharge_current_limit = Battery_discharge_current_limit +5   # slow increase by 5ampere each interval
+                         
+                         if (Battery_discharge_current_limit==0):    # fast start - take average, subtract 3Ampera
+                              Battery_discharge_current_limit=(int)(-1* (meter_ringbuffer_W.average()/50+3))
+                              if Battery_discharge_current_limit <0:
+                                    Battery_discharge_current_limit=0
+                              #print(Battery_discharge_current_limit)
+                         else:
+                              #Battery_discharge_current_limit = Battery_discharge_current_limit +4   # slow increase by 5ampere each interval
+                              Battery_discharge_current_limit = Not_to_exceed_discharge_limit
                          if Battery_discharge_current_limit > Not_to_exceed_discharge_limit:    # never go abobove the limit derived by cell-protection
                                 Battery_discharge_current_limit = Not_to_exceed_discharge_limit
-                         print_debug("discharge-limit-increased because of NO oscillation",Battery_discharge_current_limit)
-    
-      # if charge_limit set to zero, slowly increase it back 
-      # e.g. after 30min, 1800sec: 1800/60 = 30... 30*2 = 60A
-      if (not goodwe_enforced_zero_charge and Sems_Flag):
-              secs_after_last_change=now -timestamp_sems_triggered_reduce_charge_limit
-              interval = 60              # allow an increase each 60sec
-              step = 2
-              Battery_charge_current_limit =  (int)((secs_after_last_change / interval) * step)
-              #print("secs_after_last_change:", secs_after_last_change)
-              #print ("Battery_charge_current_limit:", Battery_charge_current_limit)
-              # safeguard
-              if (Battery_charge_current_limit>Battery_charge_current_limit_set_by_overvolt_protect):
-                    Battery_charge_current_limit = Battery_charge_current_limit_set_by_overvolt_protect
-              #print ("1Battery_charge_current_limit:", Battery_charge_current_limit)
+                         print_debug.my_debug("discharge-limit-increased because of NO oscillation",Battery_discharge_current_limit)
+                         #print(Battery_discharge_current_limit)
+
          
-      # if average > 500, then we have enough power left over. so we shall allowing to charge
-      if (meter_ringbuffer_W.average()> 500):
-              Battery_charge_current_limit=Battery_charge_current_limit_set_by_overvolt_protect
-              print_debug("charge-limit-reset becasue of enough exceed-power",Battery_charge_current_limit)
-      
+
+             
+             
       # DEBUG ONLY - overwirtes any previus automtism derived values
       #Battery_charge_current_limit=35
-      #Battery_discharge_current_limit=0
+      #Battery_discharge_current_limit=35
+
        
       ############
-      # safeguard   : no further limit changes allowd after here!
+      # safeguard   : no further charge/discharge limit changes allowed after here!
       ############
       # Safeguard - the not_to_exceeds values are the cell-protection values.
       # having smaller limits is ok, but never having larger values
       if (Battery_charge_current_limit>Battery_charge_current_limit_set_by_overvolt_protect):
              Battery_charge_current_limit=Battery_charge_current_limit_set_by_overvolt_protect
-             print_debug("Safeguard charge Limit kicked in","True")
+             print_debug.my_debug("Safeguard charge Limit kicked in","True")
              print("Safeguard charge Limit kicked in","True")
       if (Battery_discharge_current_limit>Not_to_exceed_discharge_limit):
              Battery_discharge_current_limit=Not_to_exceed_discharge_limit
-             print_debug("Safeguard discharge Limit kicked in","True")
+             print_debug.my_debug("Safeguard discharge Limit kicked in","True")
              print("Safeguard discharge Limit kicked in","True")
+      if (not bms_read_success):
+             Battery_discharge_current_limit=0
+             Battery_charge_current_limit=0
+             print("if_not_bms_read_success, BMS reading FAILED",Battery_discharge_current_limit)
+             print_debug.my_debug("safeguard_reduced_discharge to zero","BMS-Reading-failed")
+      
 
 
       # update data for can-bus
@@ -534,7 +644,7 @@ def test_periodic_send_with_modifying_data(bus):
  
       msg_tx_Battery_SoC_SoH.data = db.encode_message('Battery_SoC_SoH',{'SoC': my_soc,'SoH': 100})
       task_tx_Battery_SoC_SoH.modify_data(msg_tx_Battery_SoC_SoH)     
-      print_debug ("SOC sent via canbus", my_soc)
+      print_debug.my_debug ("SOC sent via canbus", my_soc)
  
       msg_tx_Battery_actual_values_UIt.data = db.encode_message('Battery_actual_values_UIt',{
         'Battery_temperature' : my_temp,
@@ -543,8 +653,8 @@ def test_periodic_send_with_modifying_data(bus):
       task_tx_Battery_actual_values_UIt.modify_data(msg_tx_Battery_actual_values_UIt) 
 
     
-      print_debug ("CANBUS: Battery_charge_current_limit", Battery_charge_current_limit)
-      print_debug ("CANBUS: Battery_discharge_current_limit", Battery_discharge_current_limit)
+      print_debug.my_debug ("CANBUS: Battery_charge_current_limit", Battery_charge_current_limit)
+      print_debug.my_debug ("CANBUS: Battery_discharge_current_limit", Battery_discharge_current_limit)
      
       msg_tx_Battery_limits.data = db.encode_message('Battery_limits',{
          'Battery_discharge_current_limit' : Battery_discharge_current_limit,
@@ -555,7 +665,7 @@ def test_periodic_send_with_modifying_data(bus):
 
 
       # sending some MQTT 
-      print_debug("next mqtt sent in seconds",int(mqtt_sent_interval - (now - last_mqtt_run)))
+      print_debug.my_debug("next mqtt sent in seconds",int(mqtt_sent_interval - (now - last_mqtt_run)))
       if (now - mqtt_sent_interval   > last_mqtt_run ):        #wait 20seconds before publish next mqtt
           last_mqtt_run=now
           if (global_mqtt):
@@ -567,25 +677,29 @@ def test_periodic_send_with_modifying_data(bus):
              message=str(Battery_discharge_current_limit)
              my_mqtt.publish(mqtt_client,topic,message)      
 
-      # truncating the logfile is getting to large. its not a log-rotate... just deletes the old one
-      if (write_to_file):
-        size=os.path.getsize(filename)
-        size=size/1024/1024
-        size_mb=f"{size:.0f}"
 
-        print_debug(filename+" size in MB", size_mb)
-        if size> logfile_size:
-          cmd="gzip -f " + filename
-          # the run.cmd command executes the subprocess command to zip the file
-          mp_gzip = multiprocessing.Process(target=my_subprocess_run.run_cmd, args=(cmd,q_file_check))
-          mp_gzip.start()
-          while (not q_file_check.empty()):
-             q=q_file_check.get()
-             #print ("status: ",q[0])
-             #print ("stdout: ",q[1])
-             #print ("stderr: ",q[2])
-          #status, stdout_str=check_can_up.run_cmd(cmd)
-          #os.remove(filename)
+      # compress logfiles
+      if (write_to_file and (now-timestamp_generic_interval_1> generic_interval_1)):
+              print_debug.my_compress(filename)
+			  
+
+      # end of main loop
+      if (now-timestamp_generic_interval_1> generic_interval_1):
+            timestamp_generic_interval_1=now
+
+      # sending all the joins
+      #if (check_can_join):
+      #     mp_check_can.join()
+      if (read_bms_join):
+            mp_read_bms.join()
+      mp_sma.join()
+      if (Sems_Flag):
+         if (sems_join):
+           mp_do_auth_and_query.join()
+      print("q_check_can :", q_check_can.qsize())
+      print("q_my_read_bms:", q_my_read_bms.qsize())
+      print("q_do_auth_and_query:", q_do_auth_and_query.qsize())
+      print("q_sma:", q_sma.qsize())
 
       time.sleep(sleepTime)
 
@@ -594,6 +708,16 @@ def test_periodic_send_with_modifying_data(bus):
 
 if __name__ == "__main__":
 
+   # file logging
+   ##############
+   if (write_to_file):
+        #my_file=open(filename,'w')
+        print ("Logging to file:",filename)
+        print_debug.log_setup(filename)
+   if (not log_to_console):
+        print("logging to console is disabled")
+        print(" -enable logging to console  by setting variable log_to_console=True")
+
    # JK BMS UART INIT
    ##################
    try:
@@ -601,7 +725,13 @@ if __name__ == "__main__":
        bms.baudrate = 115200
        bms.timeout  = 0.2
    except:
-       print("BMS not found.")
+       s1="FATAL ERROR: BMS not found - correct ttyUSB choosen?."
+       s2="Aborting/exiting the program"
+      
+       print(s1,s2)
+       print_debug.my_debug(s1,s2)
+       sys.exit()
+      
  
    print (datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
    #my_now = datetime.now()
@@ -699,15 +829,8 @@ if __name__ == "__main__":
    msg_tx_Battery_Error_Warnings = can.Message(arbitration_id=Battery_Error_Warnings.frame_id, data=msg_data_enc_Battery_Error_Warnings, is_extended_id=False)
 
 
-   # file logging
-   ##############
-   if (write_to_file):
-        #my_file=open(filename,'w')
-        print ("Logging to file:",filename)
-        log_setup(filename)
-   if (not log_to_console):
-        print("logging to console is disabled")
-        print(" -enable logging to console  by setting variable log_to_console=True")
+
+
  
    # mqtt
    #######

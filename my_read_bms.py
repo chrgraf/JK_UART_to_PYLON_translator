@@ -5,8 +5,7 @@ import multiprocessing
 import sys, os, io
 import struct
 
-from print_debug import print_debug as print_debug
-from print_debug import log_setup as log_setup
+import print_debug
 
 from my_basic_ringbuf import myRingBuffer
 
@@ -28,15 +27,15 @@ def sendBMSCommand(bms,cmd_string):
 
 # This could be much better, but it works.
 def readBMS(bms,q):
-    capacity=0.0
+    soc=0.0
     voltage = 0.0
     current=0.0
     temp=0.0
     min_monomer=0.0
     max_monomer=0.0
     current=0.0
-    volt_array = myRingBuffer(16)
     success=True
+    volt_array = myRingBuffer(16)
 
     try:
         # Read all command
@@ -91,7 +90,7 @@ def readBMS(bms,q):
 
                     # We can use this number to determine the total amount of cells we have
                     cellcount = int(bytecount/3)
-                    print_debug("cellcount",cellcount)
+                    print_debug.my_debug("cellcount",cellcount)
 
                     # Voltages start at index 2, in groups of 3
                     volt_array = myRingBuffer(cellcount)
@@ -103,11 +102,11 @@ def readBMS(bms,q):
                         dataStr  = f"JK_BMS{valName} {voltage}"
                         #print(dataStr, file=fileObj)
                         # print(dataStr)
-                    print_debug (str(volt_array.get()),"")
+                    print_debug.my_debug (str(volt_array.get()),"")
                     max_monomer=volt_array.max()
                     min_monomer=volt_array.min()
-                    print_debug("Min Monomer", min_monomer)
-                    print_debug("Max Monomer", max_monomer)
+                    print_debug.my_debug("Min Monomer", min_monomer)
+                    print_debug.my_debug("Max Monomer", max_monomer)
 
                     # Temperatures are in the next nine bytes (MOSFET, Probe 1 and Probe 2), register id + two bytes each for data
                     # Anything over 100 is negative, so 110 == -10
@@ -121,7 +120,7 @@ def readBMS(bms,q):
                     if temp_2 > 100 :
                         temp_2 = -(temp_2 - 100)
                     temp=(temp_1+temp_2)/2
-                    print_debug("temp",temp)
+                    print_debug.my_debug("temp",temp)
 
                     # For now we just show the average between the two probes in Grafana
                     valName  = "mode=\"temp_BMS\""
@@ -132,7 +131,7 @@ def readBMS(bms,q):
 
                     # Battery voltage
                     voltage = struct.unpack_from('>H', data, bytecount + 12)[0]/100
-                    print_debug ("Battery Voltage",voltage)
+                    print_debug.my_debug ("Battery Voltage",voltage)
 
                     #c1=int(100*current)        # multiply by 100 to get rid of floating-point
                     #current=twos_comp(c1,16)/100   # create the twos complement and divide by 100 again
@@ -151,20 +150,20 @@ def readBMS(bms,q):
                     else:
                        current=current_msb*(-256)+current_lsb
                     current=current/100
-                    print_debug("corrected current: ",current)
+                    print_debug.my_debug("corrected current: ",current)
 
 
 
-                    # SOC/ Remaining capacity, %
-                    unmodified_capacity = struct.unpack_from('>B', data, bytecount + 18)[0]
-                    print_debug("Debug unmodified capacity", unmodified_capacity)
+                    # SOC/ Remaining soc, %
+                    unmodified_soc = struct.unpack_from('>B', data, bytecount + 18)[0]
+                    print_debug.my_debug("Debug unmodified soc", unmodified_soc)
                     #allow_larger_100_percent_soc = True
                     allow_larger_100_percent_soc = False
-                    if (unmodified_capacity >=99 and allow_larger_100_percent_soc):
-                       capacity=unmodified_capacity-1
+                    if (unmodified_soc >=99 and allow_larger_100_percent_soc):
+                       soc=unmodified_soc-1
                     else:
-                       capacity=unmodified_capacity
-                    print_debug("final SOC", capacity)
+                       soc=unmodified_soc
+                    print_debug.my_debug("final SOC", soc)
 
 
         else:
@@ -175,10 +174,13 @@ def readBMS(bms,q):
     except Exception as e:
         print(e)
         success=False
+    if (min_monomer == 0 or min_monomer ==0):
+        success=False
+
     #print("Success reading the BMS",success)
-    r=[capacity,voltage,current,temp,min_monomer, max_monomer, current, success]
+    r=[soc,voltage,current,temp,min_monomer, max_monomer, success]
     q.put(r)
-    return capacity,voltage,current,temp,min_monomer, max_monomer, current, success
+    return soc,voltage,current,temp,min_monomer, max_monomer, success
 
 
 
@@ -201,9 +203,16 @@ if __name__ == "__main__":
    x.start()
    x.join()
    result=q.get()
-   success=result[7]
-   print ("Status reading the BMS: ",success)
-   print ("return values:", result)
+   print("soc                :",result[0])
+   print("batt_volt[V]       :",result[1])
+   print("current[A]         :",result[2])
+   print("temp[C]            :",result[3])
+   print("min_monomer[V]     :",result[4])
+   print("max_monomer[V]     :",result[5])
+   print("success reading BMS:",result[6])
+
+   #print ("Status reading the BMS: ",success)
+   #print ("return values:", result)
 
 
    #my_soc,my_volt,my_ampere,my_temp,min_volt, max_volt, current=readBMS()

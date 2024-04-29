@@ -28,9 +28,14 @@ import sys
 import socket
 import struct
 import binascii
+import os
 from configparser import ConfigParser
 from speedwiredecoder import *
 import multiprocessing
+
+
+#verbose=True
+verbose=False
 
 # clean exit
 def abortprogram(signal,frame):
@@ -42,6 +47,8 @@ def abortprogram(signal,frame):
 signal.signal(signal.SIGINT, abortprogram)
 
 def sma_socket_decode(sock,q):
+   # print("module name:",__name__, "parent_process:",os.getppid(), "process_id",os.getpid())
+
    # processing received messages
    smainfo=sock.recv(1024)
    smainfoasci=binascii.b2a_hex(smainfo)
@@ -52,9 +59,10 @@ def sma_socket_decode(sock,q):
    #print ('----asci-output---')
    #print (smainfoasci)
    
-   #print ('----all-found-values---')
-   #for val in emparts:
-   #    print ('{}: value:{}'.format(val,emparts[val]))
+   if (verbose):
+     print ('----all-found-values---')
+     for val in emparts:
+       print ('{}: value:{}'.format(val,emparts[val]))
    
    pconsume=emparts["pconsume"]
    psupply=emparts["psupply"]
@@ -94,8 +102,8 @@ def sma_socket_setup():
 
    
 def main():
-   q_sma=multiprocessing.Queue()
-   my_sma_socket=sma_socket_setup()
+   q_sma=multiprocessing.Queue()                  # queue for IPC
+   my_sma_socket=sma_socket_setup()               # init the socket
    mp_sma = multiprocessing.Process(target=sma_socket_decode,args=(my_sma_socket,q_sma))
    mp_sma.start()
    mp_sma.join()
