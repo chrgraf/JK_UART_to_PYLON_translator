@@ -18,7 +18,7 @@ def my_compress(filename):
   q=multiprocessing.Queue() 
   for x in list:
      cmd=base + x
-     my_subprocess_run.run_cmd(cmd,q)
+     my_subprocess_run.run_cmd(cmd)
      #print(cmd)
  
   return(list)
@@ -28,7 +28,7 @@ def my_compress(filename):
 def log_setup(filename):
     #log_handler = logging.handlers.WatchedFileHandler(filename)
     size=30 * 1024 * 1024    # 30MB
-    log_handler = RotatingFileHandler(filename, maxBytes=size, backupCount=5)
+    log_handler = RotatingFileHandler(filename, maxBytes=size, backupCount=10)
     formatter = logging.Formatter(
         '%(asctime)s program_name [%(process)d]: %(message)s',
         '%b %d %H:%M:%S')
@@ -43,7 +43,7 @@ def log_setup(filename):
 
 def my_debug(s,v):
    date = datetime.datetime.now()
-   total=55
+   total=70
    l=len(s)
    s1=s
    v1=v

@@ -10,7 +10,7 @@ import print_debug
 from my_basic_ringbuf import myRingBuffer
 
 sleepTime=2
-
+start_time=time.time()
 
 def sendBMSCommand(bms,cmd_string):
     # The hex string composing the command, including CRC check etc.
@@ -159,8 +159,14 @@ def readBMS(bms,q):
                     print_debug.my_debug("Debug unmodified soc", unmodified_soc)
                     #allow_larger_100_percent_soc = True
                     allow_larger_100_percent_soc = False
+                    # time contraint the overloading.. - 30min
+                    remaining_overload = time.time()-start_time
+                    if ( remaining_overload > 3600):
+                       allow_larger_100_percent_soc = False
+                    #print(time.time()-start_time)
                     if (unmodified_soc >=99 and allow_larger_100_percent_soc):
                        soc=unmodified_soc-1
+                       print_debug.my_debug("overload reaming active time",str(remaining_overload))
                     else:
                        soc=unmodified_soc
                     print_debug.my_debug("final SOC", soc)
