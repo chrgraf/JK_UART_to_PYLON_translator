@@ -157,8 +157,8 @@ def readBMS(bms,q):
                     # SOC/ Remaining soc, %
                     unmodified_soc = struct.unpack_from('>B', data, bytecount + 18)[0]
                     print_debug.my_debug("Debug unmodified soc", unmodified_soc)
-                    #allow_larger_100_percent_soc = True
-                    allow_larger_100_percent_soc = False
+                    allow_larger_100_percent_soc = True
+                    #allow_larger_100_percent_soc = False
                     # time contraint the overloading.. - 30min
                     remaining_overload = time.time()-start_time
                     if ( remaining_overload > 3600):
@@ -184,9 +184,9 @@ def readBMS(bms,q):
         success=False
 
     #print("Success reading the BMS",success)
-    r=[soc,voltage,current,temp,min_monomer, max_monomer, success]
+    r=[soc,voltage,current,temp,min_monomer, max_monomer, success,allow_larger_100_percent_soc]
     q.put(r)
-    return soc,voltage,current,temp,min_monomer, max_monomer, success
+    return soc,voltage,current,temp,min_monomer, max_monomer, success,allow_larger_100_percent_soc
 
 
 
@@ -194,34 +194,39 @@ if __name__ == "__main__":
 
    # JK BMS UART INIT
    ##################
+   usb_jk="/dev/ttyUSB0"
+   bms = serial.Serial()
+   bms.port=usb_jk
+   bms.baudrate = 115200
+   bms.timeout  = 0.2
+
    try:
-      bms = serial.Serial('/dev/ttyUSB0')
-      bms.baudrate = 115200
-      bms.timeout  = 0.2
+      bms.open()
    except:
       print("BMS not found.")
+      print("error open serial port: " + usb_jk)
 
-   # query the BMS
-   print("query the BMS")
-   print ("USB Serial Adpater Setting: ",bms)
-   q = multiprocessing.Queue()
-   x = multiprocessing.Process(target=readBMS,args=(bms,q,))
-   x.start()
-   x.join()
-   result=q.get()
-   print("soc                :",result[0])
-   print("batt_volt[V]       :",result[1])
-   print("current[A]         :",result[2])
-   print("temp[C]            :",result[3])
-   print("min_monomer[V]     :",result[4])
-   print("max_monomer[V]     :",result[5])
-   print("success reading BMS:",result[6])
+   if bms.isOpen():
+    # query the BMS
+    print("query the BMS")
+    print ("USB Serial Adpater Setting: ",bms)
+    q = multiprocessing.Queue()
+    x = multiprocessing.Process(target=readBMS,args=(bms,q,))
+    x.start()
+    x.join()
+    result=q.get()
+    print("soc                :",result[0])
+    print("batt_volt[V]       :",result[1])
+    print("current[A]         :",result[2])
+    print("temp[C]            :",result[3])
+    print("min_monomer[V]     :",result[4])
+    print("max_monomer[V]     :",result[5])
+    print("success reading BMS:",result[6])
 
-   #print ("Status reading the BMS: ",success)
-   #print ("return values:", result)
+    #print ("Status reading the BMS: ",success)
+    #print ("return values:", result)
 
-
-   #my_soc,my_volt,my_ampere,my_temp,min_volt, max_volt, current=readBMS()
+    #my_soc,my_volt,my_ampere,my_temp,min_volt, max_volt, current=readBMS()
 
 
 

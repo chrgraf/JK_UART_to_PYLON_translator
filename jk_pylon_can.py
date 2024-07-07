@@ -19,7 +19,6 @@
 ###############################################################################################
 
 
-
 # canbus
 from __future__ import print_function
 import cantools
@@ -38,6 +37,10 @@ import sys, os, io
 import struct
 import serial
 import my_read_bms
+
+#hmc5883l sensor to read ampere of Goodwe
+import smbus
+import my_hmc5883l
 
 import multiprocessing
 
@@ -129,7 +132,7 @@ def set_charge_limit_by_max_monomer(max_volt,Battery_charge_current_limit_set_by
   now = time.time()
   dbg="set_charge_limit_by_max_monomer"
   c_limit=Battery_charge_current_limit_set_by_overvolt_protect
-  mylist=[[3.60,0],[3.55,0],[3.49,0],[3.46,15],[3.43,20],[3.38,30],[3.2,60]]
+  mylist=[[3.60,0],[3.55,0],[3.47,0],[3.44,15],[3.42,20],[3.39,30],[3.2,60]]
   for i in range(len(mylist)):
      try:
        if (max_volt>=mylist[i][0]):
@@ -205,20 +208,24 @@ def populate_sma_ringbuffer_old (meter,meter_ringbuffer_W):
 def populate_sma_ringbuffer (meter,meter_ringbuffer_W):
     # have in mind, ringbuffer is WATT, not Ampere
  
-    limit_min_max=300
-    limit_average=400
-    min_event_osci_true=5
+    limit_min_max=250
+    upper_value= meter_ringbuffer_W.average()+limit_min_max
+    lower_value= meter_ringbuffer_W.average()-limit_min_max
+    #limit_average=400
+    min_event_osci_true=3
     oscillation_got_detected=False
     meter_ringbuffer_W.append(meter)
     print_debug.my_debug ("meter ringbuffer average[W]", f"{meter_ringbuffer_W.average():.0f}")
     print_debug.my_debug ("meter ringbuffer min[W]", f"{meter_ringbuffer_W.min():.0f}")
     print_debug.my_debug ("meter ringbuffer max[W]", f"{meter_ringbuffer_W.max():.0f}")
     print_debug.my_debug ("meter actual[W]", f"{meter:.0f}")
+    print_debug.my_debug ("meter ringbuffer gt_count", f"{meter_ringbuffer_W.gt_count(upper_value):.0f}")
+    print_debug.my_debug ("meter ringbuffer lt_count", f"{meter_ringbuffer_W.lt_count(lower_value):.0f}")
     # gt_count counts elements in buffer GreaterThen
     # lt_count counts elements in buffer LessThen
 
-    if (meter_ringbuffer_W.gt_count(limit_min_max) > min_event_osci_true and meter_ringbuffer_W.lt_count(-limit_min_max) > min_event_osci_true):
-       if (meter_ringbuffer_W.average() < limit_average and meter_ringbuffer_W.average() > -limit_average):
+    if (meter_ringbuffer_W.gt_count(upper_value) > min_event_osci_true and meter_ringbuffer_W.lt_count(lower_value) > min_event_osci_true):
+       #if (meter_ringbuffer_W.average() < limit_average and meter_ringbuffer_W.average() > -limit_average):
            oscillation_got_detected=True
            # flusing the ringbuffer for a clean start
            meter_ringbuffer_W.flush()
@@ -244,6 +251,9 @@ def test_periodic_send_with_modifying_data(bus):
     Battery_charge_current_limit_default   = 60
     Battery_charge_current_limit = Battery_charge_current_limit_default
     Battery_charge_current_limit_set_by_overvolt_protect= Battery_charge_current_limit_default
+
+    floating_Battery_charge_current_limit = 0
+    floating_Battery_discharge_current_limit = 0
  
     Battery_discharge_current_limit = Battery_discharge_current_limit_default
     Not_to_exceed_discharge_limit=Battery_discharge_current_limit_default
@@ -257,9 +267,10 @@ def test_periodic_send_with_modifying_data(bus):
     generic_interval_1 = 5                               # used for JK_BMS_queary and can-bus checking
     timestamp_generic_interval_1=0.0
 
-    current_max_size=20                                  # elements in ringbuffer
+    current_max_size=10                                  # elements in ringbuffer
     current_ringbuffer=myRingBuffer(current_max_size)    # init/flush the ringbuffer
     meter_ringbuffer_W=myRingBuffer(current_max_size)    # init/flush the ringbuffer
+    hmc_ringbuffer_A=myRingBuffer(current_max_size)    # init/flush the ringbuffer
     Battery_charge_voltage_default         = 55
     Battery_discharge_voltage_default      = 50.5
     # oscillation detection
@@ -276,6 +287,26 @@ def test_periodic_send_with_modifying_data(bus):
     bms_read_success=False
     can_fail_counter=0
     can_up_status = False
+    
+    # slow start after fresh start
+    running_since=time.time()
+    slow_start_charge_limit=0
+
+    ###############
+    # HMC5883L - reading ampere of Goodwe
+    ###############
+    try:
+        i2c_bus = smbus.SMBus(1)
+        my_hmc5883l.setup(i2c_bus)
+    except:
+       s1="ERROR: HMC5883L not found"
+       s2="continuing without HMC5883"
+       print(s1,s2)
+       print_debug.my_debug(s1,s2)
+       hmc_success = False
+    else:
+       hmc_success = True
+ 
 
     ###############
     # SEMS  STUFF
@@ -325,6 +356,7 @@ def test_periodic_send_with_modifying_data(bus):
               min_volt=q[4]
               max_volt=q[5]
               bms_read_success=q[6]
+              allow_larger_100_percent_soc=q[7]
               #print("bms_read_success",bms_read_success)
               if (not bms_read_success):
                   print_debug.my_debug("Status reading the BMS","Fail")
@@ -415,6 +447,7 @@ def test_periodic_send_with_modifying_data(bus):
            min_volt=q[4]
            max_volt=q[5]
            bms_read_success=q[6]
+           allow_larger_100_percent_soc=q[7]
            #print("bms_read_success",bms_read_success)
            if (not bms_read_success):
                 print_debug.my_debug("Status reading the BMS","Fail")
@@ -436,7 +469,8 @@ def test_periodic_send_with_modifying_data(bus):
              meter=q_sma.get()
              # populate ringbuffer for SMA meter
              oscillation_got_detected,meter_ringbuffer_W=populate_sma_ringbuffer(meter,meter_ringbuffer_W)
-      print_debug.my_debug(str(meter_ringbuffer_W.get()),"")
+      
+      print_debug.my_debug(str(meter_ringbuffer_W.get()),"meter_ringbuffer")
       
       # query SEMS
       ###############
@@ -477,6 +511,17 @@ def test_periodic_send_with_modifying_data(bus):
            print_debug.my_debug("sems min[A]",sems_current_ringbuffer_A.min())
            print_debug.my_debug("sems max[A]",sems_current_ringbuffer_A.max())
 
+      ###########################
+      # query SEMS via HMC5883l
+      ###########################
+      if (Sems_Flag and hmc_success):
+            hmc_read_x= my_hmc5883l.read_raw_data(my_hmc5883l.X_MSB,i2c_bus)
+            hmc_read_y= my_hmc5883l.read_raw_data(my_hmc5883l.Y_MSB,i2c_bus)
+            hmc_read_z= my_hmc5883l.read_raw_data(my_hmc5883l.Z_MSB,i2c_bus)
+            
+            hmc_ampere=40/669*hmc_read_y+40
+            hmc_ringbuffer_A.append(round(hmc_ampere,2))
+            print_debug.my_debug("hmc ringbuffer[A]",hmc_ringbuffer_A.get())
 
       #############################
       # Setting the discharge limit
@@ -486,7 +531,7 @@ def test_periodic_send_with_modifying_data(bus):
       Not_to_exceed_discharge_limit=set_discharge_limit(min_volt,Not_to_exceed_discharge_limit,my_soc)
 
       if (Sems_Flag):
-         if (sems_current_ringbuffer_A.average()>1):       # if sems_current >1, then its charging
+         if (sems_current_ringbuffer_A.average()> 400/50):       # we allow it to charge for approx 400W
                # goodwe charges, then solis must not discharge
                l=-1* current_ringbuffer.average()   # assuming we discharge, lets make a postiv value
                l=l-bp_a                             # subtract goodwe ampaere
@@ -511,7 +556,8 @@ def test_periodic_send_with_modifying_data(bus):
 
          # discharge-limit fast increase back again
          ###########################################
-         if (meter_ringbuffer_W.average() < -700 and not goodwe_enforced_zero_discharge):
+         #if (meter_ringbuffer_W.average() < -700 and not goodwe_enforced_zero_discharge):
+         if (meter_ringbuffer_W.average() < -700):
               Battery_discharge_current_limit=Not_to_exceed_discharge_limit
          
       print_debug.my_debug("Battery_charge_current_limit_before_charge_limit", Battery_charge_current_limit)
@@ -639,7 +685,22 @@ def test_periodic_send_with_modifying_data(bus):
       #Battery_charge_current_limit=20
       #Battery_discharge_current_limit=60
 
-       
+      
+
+      # slow start after a fresh restart of jk_pylon_can
+      if (now - running_since < 180 and not goodwe_enforced_zero_charge):
+             slow_start_charge_limit+=1
+             if (slow_start_charge_limit < Battery_charge_current_limit_set_by_overvolt_protect):
+                    Battery_charge_current_limit=slow_start_charge_limit
+
+     
+      if (allow_larger_100_percent_soc):
+         Battery_charge_current_limit = Battery_charge_current_limit_set_by_overvolt_protect 
+
+      # quick oscilaation hack - fix load to a max
+      #if Battery_charge_current_limit > 10:
+      #       Battery_charge_current_limit = 10
+          
       ############
       # safeguard   : no further charge/discharge limit changes allowed after here!
       ############
@@ -660,7 +721,6 @@ def test_periodic_send_with_modifying_data(bus):
              print_debug.my_debug("safeguard_reduced_discharge to zero","BMS-Reading-failed")
       
 
-
       # update data for can-bus
       #########################
       msg_tx_Network_alive_msg.data = db.encode_message('Network_alive_msg',{'Alive_packet': Alive_packet})
@@ -679,6 +739,7 @@ def test_periodic_send_with_modifying_data(bus):
     
       print_debug.my_debug ("CANBUS: Battery_charge_current_limit", Battery_charge_current_limit)
       print_debug.my_debug ("CANBUS: Battery_discharge_current_limit", Battery_discharge_current_limit)
+      
      
       msg_tx_Battery_limits.data = db.encode_message('Battery_limits',{
          'Battery_discharge_current_limit' : Battery_discharge_current_limit,
@@ -721,9 +782,11 @@ def test_periodic_send_with_modifying_data(bus):
          if (sems_join):
            mp_do_auth_and_query.join()
       # check all the mp-queues - shall never increase
-      print("BMS read status", bms_read_success)
-      print("q_check_can:", q_check_can.qsize()," q_my_read_bms:", q_my_read_bms.qsize()," q_do_auth_and_query:", q_do_auth_and_query.qsize(), " q_sma:       ", q_sma.qsize())
-      print ("Ampere:   ", my_ampere, " Volt:     ", my_volt, " min_volt:       ",min_volt," max_volt:",max_volt)
+      print("BMS status  ", bms_read_success, "  run          ", "{:5d}".format(Alive_packet))
+      print("q_check_can:", "{:04d}".format(q_check_can.qsize()),"  q_my_read_bms:", "{:04d}".format(q_my_read_bms.qsize()),"  q_do_auth_and_query:", "{:04d}".format(q_do_auth_and_query.qsize()), "  q_sma:       ", "{:04d}".format(q_sma.qsize()))
+      print ("Ampere:     ", "{:04.1f}".format(my_ampere), "   Volt:        ", "{:04.1f}".format(my_volt), "  min_volt:           ","{:1.2f}".format(min_volt),"  max_volt:    ","{:1.2f}".format(max_volt))
+      print ("charge_lim:   ", "{:02d}".format(Battery_charge_current_limit), "   discharge_l:   ", "{:02d}".format(Battery_discharge_current_limit),"  sent_soc%            ","{:3d}".format(my_soc))
+      print ("hmc_5883y:  ", "{:03d}".format(hmc_read_y), "  hmc_ampere  ","{:04.1f}".format(hmc_ampere))
 
       time.sleep(sleepTime)
 
@@ -744,13 +807,19 @@ if __name__ == "__main__":
 
    # JK BMS UART INIT
    ##################
+   usb_jk="/dev/ttyUSB0"
+   bms = serial.Serial()
+   bms.port=usb_jk
+   bms.baudrate = 115200
+   bms.timeout  = 0.2
+
    try:
-       bms = serial.Serial('/dev/ttyUSB0')
-       bms.baudrate = 115200
-       bms.timeout  = 0.2
+      bms.open()
+
    except:
-       s1="FATAL ERROR: BMS not found - correct ttyUSB choosen?."
-       s2="Aborting/exiting the program"
+       s1="FATAL ERROR: BMS not found - correct ttyUSB choosen?. see file: "
+       s1=s1+sys.argv[0]
+       s2="check for variable usb_jk. Aborting/exiting the program"
       
        print(s1,s2)
        print_debug.my_debug(s1,s2)
@@ -761,6 +830,7 @@ if __name__ == "__main__":
    #my_now = datetime.now()
    #dt_string = my_now.strftime("%d/%m/%Y %H:%M:%S")
    #print("date and time =", dt_string)
+
 
 
    # CAN BUS INIT

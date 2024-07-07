@@ -70,6 +70,83 @@ JK BMS        : JK Smart Active Balance BMS BD6A20S10P
 Solis inverter: RAI-3K-48ES-5G
 ```
 
+# install
+
+create venv:
+apt install python3-pip
+
+python -m venv /home/behn/jk_venv
+cd /home/behn/jk_venv
+./bin/pip3 install cantools pyserial smbus paho.mqtt requests
+./bin/pip3 install spidev  python-can
+
+
+ 
+
+# create ramdisk
+sudo mkdir -p /mnt/ramdisk
+
+
+(jk_venv) behn@rpi5:~/jk_venv $ cat /etc/fstab
+..
+none /mnt/ramdisk tmpfs nodev,nosuid,noexec,nodiratime,size=96M 0 0
+
+
+# 2-channel can-interface
+https://www.waveshare.com/2-ch-can-fd-hat.htm
+
+sudo raspi-config
+Choose Interfacing Options -> SPI -> Yes to enable the SPI interface.
+
+behn@rpi5:~ $ sudo vi /boot/firmware/config.txt
+
+
+#can hat
+dtparam=spi=on
+#dtoverlay=mcp2515-can0,oscillator=12000000,interrupt=25,spimaxfrequency=2000000
+dtoverlay=mcp2515-can1,oscillator=16000000,interrupt=25
+dtoverlay=mcp2515-can0,oscillator=16000000,interrupt=23
+dtoverlay=spi-bcm2835-overlay
+
+
+behn@rpi5:~ $ dmesg | grep spi
+[    3.602609] mcp251x spi0.0 can0: MCP2515 successfully initialized.
+[    3.614747] mcp251x spi0.1 can1: MCP2515 successfully initialized.
+
+# sysctl start
+```
+behn@rpi2:/mnt/sda/etc/systemd/system $ cat jk_pylon.service
+
+# copy this file into /etc/systemd/system
+# replace all occurences of /home/behn/jk_pylon with your venv dir
+# make the service starting after reboot: systemctl enable jk_pylon
+# show status: systemctl show jk_pylon
+# stop it: systemctl stop jk_pylon
+# if you change this script, reload systemctl: systemctl daemon-reload
+
+
+
+[Unit]
+Description=Launching JK_pylon converter
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+User=behn
+WorkingDirectory=/home/behn//jk_venv
+PermissionsStartOnly=true
+#Environment=PYTHONPATH=/home/behn/jk_pylon_venv
+#ExecStartPre=+/bin/bash -c 'ip link set can0 up type can bitrate 500000'
+ExecStartPre=-/usr/sbin/ip link set can0 up type can bitrate 500000
+ExecStart=/home/behn/jk_venv/jk_pylon_can.py
+
+[Install]
+WantedBy=multi-user.target
+
+```
 # testing Basic function blocks first
 As the project does include now many different aspects, its easu to break it...
 Intention of below verification-steps is to test each function standalone! Shall massively help in identifying if something is non-functional
@@ -102,7 +179,16 @@ Bezug von Grid: -10.0 W
 ## checking UART-connection to JK-BMS
 One major comoponent is to read via Serial UART from the BMS. In mine setup the serial adapaper is attached via ttyUSB0.
 Change as required in the my_read_bms.py script:
+
+Note: do not install serial module. instead install pyserial module: 
+  ```./bin/pip3 install pyserial```
+
+
 ```
+behn@rpi5:~ $ dmesg | grep ttyUSB
+[    3.274623] usb 3-2: FTDI USB Serial Device converter now attached to ttyUSB0
+
+
 behn@rpi5:~/jk_venv $ grep USB0 my_read_bms.py
       bms = serial.Serial('/dev/ttyUSB0')
 ```
@@ -116,8 +202,14 @@ return values: [56, 52.28, -12.2, 23.0, 3.266, 3.27, -12.2, True]
 
 ```
 
+
 ## canbus
 If canbus all does fine, then the canbus dump-tool shall print something like this here
+
+### first check if can0 is up and running
+sudo ip link show can0
+sudo ip link set can0 up type can bitrate 500000
+
 
 ```
 behn@rpi5:~/jk_venv $ ./can_debug.py
