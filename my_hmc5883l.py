@@ -53,6 +53,7 @@ def compute_heading(x, y):
 def main():
     i2c_bus = smbus.SMBus(1)
     setup(i2c_bus)
+    hmc_ampere=0.0
     
     while True:
         x = read_raw_data(X_MSB,i2c_bus)
@@ -62,7 +63,14 @@ def main():
         heading = compute_heading(x, y)
         
         print(f"X: {x} uT, Y: {y} uT, Z: {z} uT, Heading: {heading:.2f}°")
-        
+        if (y > -300):
+              if (hmc_read_z > 0):
+                 hmc_ampere=48
+              else:
+                 hmc_ampere=-48
+        else: 
+              hmc_ampere=40/669*y+40
+        print ("HMC Ampere", hmc_ampere)
         time.sleep(0.5)
  
 if __name__ == "__main__":

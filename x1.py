@@ -44,10 +44,6 @@ import my_hmc5883l
 
 import multiprocessing
 
-# round-down via math.floor
-import math              
-
-
 #mqtt - for logging-purposes we send some stuff to a mqtt-broker.
 # not required to operate this script successful
 import my_mqtt
@@ -123,7 +119,7 @@ def set_discharge_limit(min_volt,Battery_discharge_current_limit,my_soc):
         print_debug.my_debug("set_discharge_limit_2",Battery_discharge_current_limit)
    
   # allowing to increase the discharge-limit
-  elif (my_soc > 40):  
+  elif (my_soc > 45):  
         Battery_discharge_current_limit = discharge_limit
         print_debug.my_debug("set_discharge_limit_3",discharge_limit)
   
@@ -136,14 +132,14 @@ def set_charge_limit_by_max_monomer(max_volt,Battery_charge_current_limit_set_by
   now = time.time()
   dbg="set_charge_limit_by_max_monomer"
   c_limit=Battery_charge_current_limit_set_by_overvolt_protect
-  print_debug.my_debug(dbg+"_c_limit_0_overvolt_protect_begin",c_limit)
+  print_debug.my_debug(dbg+"c_limit_0_overvolt_protect_begin",c_limit)
   print_debug.my_debug(dbg+"charge_limit_0",Battery_charge_current_limit_set_by_overvolt_protect)
-  mylist=[[3.60,0],[3.55,0],[3.47,0],[3.44,0],[3.42,30],[3.39,60],[3.2,60],[2.70,20]]
+  mylist=[[3.60,0],[3.55,0],[3.47,0],[3.44,0],[3.42,30],[3.39,60],[3.2,60]]
   for i in range(len(mylist)):
      try:
        if (max_volt>=mylist[i][0]):
            c_limit=mylist[i][1]
-           print_debug.my_debug(dbg+"_c_limit_1",c_limit)
+           print_debug.my_debug(dbg+"c_limit_1",c_limit)
            break
      except:
          c_limit=0
@@ -182,7 +178,7 @@ def populate_sma_ringbuffer_old (meter,meter_ringbuffer_W):
     limit_average=250
     osci_count=3
     oscillation_got_detected=False
-    while not meter.is_empty():
+    while not meter.empty():
        my_message=meter.get()
        if my_message is None:
            continue
@@ -280,7 +276,7 @@ def test_periodic_send_with_modifying_data(bus):
     current_max_size=10                                  # elements in ringbuffer
     current_ringbuffer=myRingBuffer(current_max_size)    # init/flush the ringbuffer
     meter_ringbuffer_W=myRingBuffer(current_max_size)    # init/flush the ringbuffer
-    hmc_ringbuffer_A=myRingBuffer(6)                     # init/flush the ringbuffer
+    hmc_ringbuffer_A=myRingBuffer(current_max_size)      # init/flush the ringbuffer
     solis_ringbuffer_A=myRingBuffer(current_max_size)    # init/flush the ringbuffer
     Battery_charge_voltage_default         = 55
     Battery_discharge_voltage_default      = 50.5
@@ -385,15 +381,12 @@ def test_periodic_send_with_modifying_data(bus):
     ##############################
     my_sma_socket=sma_em_capture_package.sma_socket_setup()
 
-
  
     ###########################################################################################
     # main - loop - query the bms, check under/over-volt, updates message for peridic can-task
     ###########################################################################################
     
-    #print("pre Main loop")
     while True:
-      #print("Main loop running")
       now=time.time()
       # can-bus counter alive packet
       #########################
@@ -443,7 +436,6 @@ def test_periodic_send_with_modifying_data(bus):
                         my_subprocess_run.run_cmd(cmd)
       print_debug.my_debug("can "+channel + " can_up_status", can_up_status)
       print_debug.my_debug("can_fail_counter", str(can_fail_counter))
-
       
                   
       # query the BMS
@@ -472,7 +464,7 @@ def test_periodic_send_with_modifying_data(bus):
                # populate solis ringbuffer_ampere
                current_ringbuffer=populate_solis_current_ringbuffer(my_ampere,current_ringbuffer)
                print_debug.my_debug("solis_current", my_ampere)
-      print("bms done")
+
 
 
       # query SMA meter
@@ -528,8 +520,6 @@ def test_periodic_send_with_modifying_data(bus):
            print_debug.my_debug("sems average[A]",sems_current_ringbuffer_A.average())
            print_debug.my_debug("sems min[A]",sems_current_ringbuffer_A.min())
            print_debug.my_debug("sems max[A]",sems_current_ringbuffer_A.max())
-      
-      print("sems done")
 
       ###########################
       # query SEMS via HMC5883l
@@ -550,12 +540,8 @@ def test_periodic_send_with_modifying_data(bus):
             print_debug.my_debug("hmc_x",hmc_read_x)
             print_debug.my_debug("hmc_y",hmc_read_y)
             print_debug.my_debug("hmc_z",hmc_read_z)
-            print_debug.my_debug("hmc_ampere",hmc_ampere)
             print_debug.my_debug("hmc_ringbuffer[A]",hmc_ringbuffer_A.get())
             print_debug.my_debug("hmc_average_ringbuffer[A]",hmc_ringbuffer_A.average())
-
-
-      print("hmc done")
 
       #############################
       # Setting the discharge limit
@@ -581,7 +567,7 @@ def test_periodic_send_with_modifying_data(bus):
 
          # using HMC
          else:
-              if(hmc_ringbuffer_A.average() > 2):
+              if(hmc_ringbuffer_A.average() > 5):
                   goodwe_enforced_zero_discharge=True
                   if Battery_discharge_current_limit >=1:
                        Battery_discharge_current_limit=Battery_discharge_current_limit-1
@@ -633,17 +619,16 @@ def test_periodic_send_with_modifying_data(bus):
       #######################################
       if (Sems_Flag):
           sma_ringbuffer_limit=100
-          hmc_ringbuffer_A_limit=10
-          sma_meter_limit1 = 2000
-          sma_meter_limit2 = 4000
+          hmc_ringbuffer_A_limit=20
+          hmc_trigger_reduce_stage1=-2
+          hmc_trigger_reduce_stage2=-12
 
           # why: if  meter_ringbuffer_W.average()< 1000:  >> if ringbuffer >1000, e.g. 3kw then there is no need to set charge-limit to zero
           # why -1 for: sems_current_ringbuffer_A.average()<-1 >>> sems sometimes disharges with -40W, but even then we want the solis allow to charge..
           #    that why we set 1A - only if goodwe discharges > 50W (1A * 50V), then we want to stop charging the solis
-          print("before if")
           if (use_hmc):
               # hmc_allow charging
-              if ((hmc_ringbuffer_A.average()>hmc_ringbuffer_A_limit and hmc_ringbuffer_A.latest()>hmc_ringbuffer_A_limit) or (meter_ringbuffer_W.average()>sma_ringbuffer_limit)):
+              if ((hmc_ringbuffer_A.average()>hmc_ringbuffer_A_limit) or (meter_ringbuffer_W.average()>sma_ringbuffer_limit)):
                  #goodwe charging with over 20A - so it should be safe to allow charging solis as well
                  # or sma_ringbuffer has heftover watts
                  goodwe_enforced_zero_charge=False
@@ -656,72 +641,38 @@ def test_periodic_send_with_modifying_data(bus):
                               fast_offset = 0.0
                            slow_offset=1
                            print_debug.my_debug ("hmc_allow_charge","xxxxx20")
-                           if (not meter_ringbuffer_W.is_empty() and meter_ringbuffer_W.latest() > sma_meter_limit2):
-                             Battery_charge_current_limit=Battery_charge_current_limit_set_by_overvolt_protect
-                             print_debug.my_debug ("hmc_allow_charge","xxxxx21")
-                           elif (not meter_ringbuffer_W.is_empty() and meter_ringbuffer_W.latest() > sma_meter_limit1):
-                             Battery_charge_current_limit=Battery_charge_current_limit + 10
-                             print_debug.my_debug ("hmc_allow_charge","xxxxx22")
-
-                           elif (meter_ringbuffer_W.average()>4000):
+                           if (meter_ringbuffer_W.average()>4000):
                              Battery_charge_current_limit=Battery_charge_current_limit_set_by_overvolt_protect
                              print_debug.my_debug ("hmc_allow_charge","xxxxx30")
                            elif (meter_ringbuffer_W.average()>2000):
                              Battery_charge_current_limit=Battery_charge_current_limit+slow_offset+fast_offset
                              print_debug.my_debug ("hmc_allow_charge","xxxxx40")
                            else:
-                               Battery_charge_current_limit=Battery_charge_current_limit+slow_offset
-                               print_debug.my_debug ("hmc_allow_charge","xxxxx50")
+                             Battery_charge_current_limit=Battery_charge_current_limit+slow_offset
+                             print_debug.my_debug ("hmc_allow_charge","xxxxx50")
 
                            print_debug.my_debug("charge limit slow increase",Battery_charge_current_limit)
-
-
-              #### all of the below
-              ######################
-              #### meter_ringbuffer_W.average is SMALLER then sma_ringbuffer_limit
-              #### and
-              #### hmc_ringbuffer_A.average is smaller then hmc_ringbuffer_A_limit
+              # do nothing in case goodwe charges below 20A
+              elif ((hmc_ringbuffer_A.average()<=hmc_ringbuffer_A_limit and hmc_ringbuffer_A.average()>hmc_trigger_reduce_stage1)):
+                   #do not change charge-limit
+                    Battery_charge_current_limit=Battery_charge_current_limit
+                    print_debug.my_debug ("hmc_allow_charge","xxxxx60")
+                    
               # hmc_disallow charging when goodwe discharges
-              # < -12
-              elif (hmc_ringbuffer_A.average()<=-12):
-                    #Battery_charge_current_limit=math.floor(Battery_charge_current_limit*3/8)
-                    Battery_charge_current_limit=Battery_charge_current_limit-2
-                    print_debug.my_debug("zz trigger charge limit 0, goodwe discharging","True")
-                    goodwe_enforced_zero_charge=True
-                    print_debug.my_debug ("hmc_allow_charge","xxxxx80")
-
-              # < -4
-              elif (hmc_ringbuffer_A.average()<=-4):
+ 
+              elif (hmc_ringbuffer_A.average()<=hmc_trigger_reduce_stage1):
                     #Battery_charge_current_limit=0
-                    Battery_charge_current_limit=Battery_charge_current_limit-1
-                    #Battery_charge_current_limit=math.floor(Battery_charge_current_limit*6/8)
+                    Battery_charge_current_limit=round(Battery_charge_current_limit*6/8)
                     print_debug.my_debug("zz trigger charge limit 0, goodwe discharging","True")
                     goodwe_enforced_zero_charge=True
                     print_debug.my_debug ("hmc_allow_charge","xxxxx70")
 
-              # < 16 , latest <10
-              # lower solis charging in case goodwe goes really low
-              elif (hmc_ringbuffer_A.average()<=hmc_ringbuffer_A_limit and hmc_ringbuffer_A.latest()<10):
-                   #start lowering charge-limit
-                    Battery_charge_current_limit=Battery_charge_current_limit-1
-                    print_debug.my_debug ("hmc_allow_charge","xxxxx60")
-                    
-              # < 16
-              # do nothing in case goodwe charges below 20A
-              elif (hmc_ringbuffer_A.average()<=hmc_ringbuffer_A_limit):
-                   #do not change charge-limit
-                    Battery_charge_current_limit=Battery_charge_current_limit
-                    print_debug.my_debug ("hmc_allow_charge","xxxxx64")
+              elif (hmc_ringbuffer_A.average()<=hmc_trigger_reduce_stage2):
+                    Battery_charge_current_limit=round(Battery_charge_current_limit*3/8)
+                    print_debug.my_debug("zz trigger charge limit 0, goodwe discharging","True")
+                    goodwe_enforced_zero_charge=True
+                    print_debug.my_debug ("hmc_allow_charge","xxxxx80")
 
-              # < 16
-              # do nothing in case goodwe charges below 20A
-              elif (hmc_ringbuffer_A.average()>hmc_ringbuffer_A_limit):
-                   #do not change charge-limit
-                    Battery_charge_current_limit=Battery_charge_current_limit
-                    print_debug.my_debug ("hmc_allow_charge","xxxxx65")
-                    
- 
-              #safekeeping, this else case should never be reached
               #hmc_disallow charging
               else:
                     Battery_charge_current_limit=0
@@ -766,9 +717,6 @@ def test_periodic_send_with_modifying_data(bus):
 
       print_debug.my_debug("Battery_charge_current_limit_before_osicllation_detection", Battery_charge_current_limit)
       print_debug.my_debug("goodwe_enforced_zero_charge", goodwe_enforced_zero_charge)
-
-
-      print("before oscillation detection")
 
       # oscillation detection
       #######################
@@ -819,7 +767,7 @@ def test_periodic_send_with_modifying_data(bus):
       #       Battery_discharge_current_limit = 20
 
       # DEBUG ONLY - overwirtes any previus automtism derived values
-      #Battery_charge_current_limit=40
+      #Battery_charge_current_limit=60
       #Battery_discharge_current_limit=60
           
       ############
@@ -829,13 +777,8 @@ def test_periodic_send_with_modifying_data(bus):
       # having smaller limits is ok, but never having larger values
       if (Battery_charge_current_limit>Battery_charge_current_limit_set_by_overvolt_protect):
              Battery_charge_current_limit=Battery_charge_current_limit_set_by_overvolt_protect
-             print_debug.my_debug("Safeguard max charge Limit kicked in","True")
-             print("Safeguard max charge Limit kicked in","True")
-      elif Battery_charge_current_limit <0:
-             Battery_charge_current_limit=0
-             print_debug.my_debug("Safeguard negative charge Limit kicked in","True")
-             print("Safeguard negative charge Limit kicked in","True")
-
+             print_debug.my_debug("Safeguard charge Limit kicked in","True")
+             print("Safeguard charge Limit kicked in","True")
       if (Battery_discharge_current_limit>Not_to_exceed_discharge_limit):
              Battery_discharge_current_limit=Not_to_exceed_discharge_limit
              print_debug.my_debug("Safeguard discharge Limit kicked in","True")
@@ -845,7 +788,6 @@ def test_periodic_send_with_modifying_data(bus):
              Battery_charge_current_limit=0
              print("if_not_bms_read_success, BMS reading FAILED",Battery_discharge_current_limit)
              print_debug.my_debug("safeguard_reduced_discharge to zero","BMS-Reading-failed")
-      print("after safeguard")
       
 
       # update data for can-bus
@@ -894,13 +836,11 @@ def test_periodic_send_with_modifying_data(bus):
              message=str(meter_ringbuffer_W.average())
              my_mqtt.publish(mqtt_client,topic,message)      
 
-      print("mqtt_done")
 
       # compress logfiles
       if (write_to_file and (now-timestamp_generic_interval_5> generic_interval_5)):
               print_debug.my_compress(filename)
 			  
-      print("after_compress")
 
       # end of main loop
       if (now-timestamp_generic_interval_5> generic_interval_5):
@@ -911,16 +851,12 @@ def test_periodic_send_with_modifying_data(bus):
       #     mp_check_can.join()
       if (read_bms_join):
             mp_read_bms.join()
-      
-      print("join_x1")
       mp_sma.join()
-      print("join_x2")
       if (Sems_Flag):
          if (sems_join):
            mp_do_auth_and_query.join()
       # check all the mp-queues - shall never increase
 
-      print("print_routine")
       print("BMS status  ", bms_read_success, "  run          ", "{:5d}".format(Alive_packet))
       print("q_check_can:", "{:04d}".format(q_check_can.qsize()),"  q_my_read_bms:", "{:04d}".format(q_my_read_bms.qsize())," q_do_auth_and_query:", "{:04d}".format(q_do_auth_and_query.qsize()), "  q_sma:       ", "{:04d}".format(q_sma.qsize()))
       print ("Ampere:     ", "{:04.1f}".format(my_ampere), "  Volt:        ", "{:04.1f}".format(my_volt), "  min_volt:           ","{:1.2f}".format(min_volt),"  max_volt:    ","{:1.2f}".format(max_volt))
@@ -928,7 +864,6 @@ def test_periodic_send_with_modifying_data(bus):
       print ("hmc_5883y:  ", "{:03d}".format(hmc_read_y), "  hmc_ampere   ","{:04.1f}".format(hmc_ampere))
 
       time.sleep(sleepTime)
-      print("timeLsleep_done")
 
     task.stop()
 

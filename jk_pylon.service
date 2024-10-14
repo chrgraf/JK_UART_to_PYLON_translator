@@ -18,12 +18,13 @@ Type=simple
 Restart=always
 RestartSec=1
 User=behn
-WorkingDirectory=/home/behn//jk_venv
+WorkingDirectory=/home/behn/jk_venv
 PermissionsStartOnly=true
 #Environment=PYTHONPATH=/home/behn/jk_pylon_venv
 #ExecStartPre=+/bin/bash -c 'ip link set can0 up type can bitrate 500000'
 ExecStartPre=-/usr/sbin/ip link set can0 up type can bitrate 500000
-ExecStart=/home/behn/jk_venv/jk_pylon_can.py
+#ExecStart=/home/behn/jk_venv/jk_pylon_can.py
+ExecStart=/bin/bash -c 'cd /home/behn/jk_venv/ && source ./bin/activate && python jk_pylon_can.py'
 
 [Install]
 WantedBy=multi-user.target

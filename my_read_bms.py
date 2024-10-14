@@ -156,7 +156,7 @@ def readBMS(bms,q):
 
                     # SOC/ Remaining soc, %
                     unmodified_soc = struct.unpack_from('>B', data, bytecount + 18)[0]
-                    print_debug.my_debug("Debug unmodified soc", unmodified_soc)
+                    print_debug.my_debug("SOC Debug unmodified soc", unmodified_soc)
                     allow_larger_100_percent_soc = True
                     #allow_larger_100_percent_soc = False
                     # time contraint the overloading.. - 30min
@@ -164,12 +164,13 @@ def readBMS(bms,q):
                     if ( remaining_overload > 3600):
                        allow_larger_100_percent_soc = False
                     #print(time.time()-start_time)
-                    if (unmodified_soc >=99 and allow_larger_100_percent_soc):
-                       soc=unmodified_soc-1
+                    if (unmodified_soc >=98 and allow_larger_100_percent_soc):
+                       #soc=unmodified_soc-1
+                       soc=unmodified_soc-2
                        print_debug.my_debug("overload reaming active time",str(remaining_overload))
                     else:
                        soc=unmodified_soc
-                    print_debug.my_debug("final SOC", soc)
+                    print_debug.my_debug("SOC final SOC", soc)
 
 
         else:
